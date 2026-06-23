@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NM Asistanı</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.31.0/iconfont/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --ink:#0f1117;--ink2:#3a3d4a;--ink3:#7a7f92;--ink4:#b0b4c4;
+  --bg:#f8f8fb;--card:#ffffff;--card2:#f2f2f6;--card3:#e8e8ee;
+  --accent:#1a7a5a;--accent2:#2ea87a;--accent-bg:#e8f5f0;--accent-border:#b0dfd0;
+  --warn-bg:#fef9ec;--warn-border:#f5d97a;--warn-text:#7a5500;
+  --info-bg:#eef4ff;--info-border:#b0ccf8;--info-text:#1a3a8a;
+  --danger-bg:#fff0f0;--danger-border:#f8b0b0;--danger-text:#8a1a1a;
+  --border:#e2e2ea;--border2:#d0d0dc;
+  --radius:10px;--radius-lg:16px;--radius-xl:22px;
+  --shadow:0 1px 4px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg:0 4px 24px rgba(0,0,0,.10);
+}
+body{
+  font-family:'DM Sans',system-ui,sans-serif;
+  background:var(--bg);color:var(--ink);
+  min-height:100vh;
+}
+
+/* ---- LAYOUT ---- */
+.shell{max-width:720px;margin:0 auto;padding:0 20px 60px;}
+
+/* ---- HEADER ---- */
+.hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px;
+}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-mark{
+  width:46px;height:46px;border-radius:14px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(26,122,90,.3);
+}
+.brand-mark i{font-size:24px;color:#fff;}
+.brand-name{font-family:'DM Serif Display',serif;font-size:22px;color:var(--ink);line-height:1.1;}
+.brand-tag{font-size:12px;color:var(--ink3);margin-top:2px;}
+.hdr-badge{
+  background:var(--accent-bg);border:1px solid var(--accent-border);
+  border-radius:20px;padding:6px 14px;text-align:center;
+}
+.hdr-num{font-family:'DM Serif Display',serif;font-size:22px;color:var(--accent);line-height:1;}
+.hdr-lbl{font-size:11px;color:var(--accent);margin-top:1px;}
+
+/* ---- NAV ---- */
+.nav{
+  display:flex;gap:3px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:4px;margin-bottom:24px;
+  box-shadow:var(--shadow);
+}
+.nav-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 6px;border:none;background:none;border-radius:8px;
+  font-size:13px;font-family:'DM Sans',sans-serif;color:var(--ink3);
+  cursor:pointer;transition:all .18s;font-weight:400;white-space:nowrap;
+}
+.nav-btn i{font-size:16px;}
+.nav-btn.on{background:var(--accent);color:#fff;font-weight:500;box-shadow:0 1px 6px rgba(26,122,90,.25);}
+.nav-btn:not(.on):hover{background:var(--card2);color:var(--ink);}
+
+/* ---- PANELS ---- */
+.panel{display:none;}
+.panel.on{display:block;animation:fadeUp .22s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---- FORM ---- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field.full{grid-column:1/-1;}
+.field label{font-size:11px;font-weight:500;color:var(--ink3);text-transform:uppercase;letter-spacing:.6px;}
+.field input,.field select,.field textarea{
+  border:1px solid var(--border2);border-radius:var(--radius);
+  padding:9px 12px;font-size:14px;font-family:'DM Sans',sans-serif;
+  color:var(--ink);background:var(--card);outline:none;
+  transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--accent2);box-shadow:0 0 0 3px rgba(46,168,122,.12);
+}
+.field textarea{resize:none;min-height:68px;line-height:1.55;}
+optgroup{font-weight:500;color:var(--ink3);font-size:12px;}
+option{font-weight:400;color:var(--ink);font-size:13.5px;}
+.field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7f92' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;}
+
+/* ---- CARDS ---- */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);}
+.card-inner{padding:1.1rem 1.25rem;}
+
+/* ---- PREVIEW ---- */
+.preview-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin:16px 0;}
+.preview-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.preview-eye{font-size:10px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;}
+.chips{display:flex;gap:6px;}
+.chip{font-size:11px;padding:3px 9px;border-radius:20px;background:var(--accent-bg);color:var(--accent);font-weight:500;border:1px solid var(--accent-border);}
+.preview-text{font-size:13.5px;color:var(--ink2);line-height:1.65;font-style:italic;}
+.preview-text.filled{color:var(--ink);font-style:normal;}
+
+/* ---- BUTTONS ---- */
+.btn-primary{
+  width:100%;padding:12px;background:var(--accent);color:#fff;
+  border:none;border-radius:var(--radius);font-size:14px;
+  font-family:'DM Sans',sans-serif;font-weight:500;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .15s,transform .1s;letter-spacing:.2px;
+}
+.btn-primary:hover{background:#155e44;}
+.btn-primary:active{transform:scale(.98);}
+.btn-primary i{font-size:17px;}
+
+.btn-sm{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius);
+  font-size:12px;font-family:'DM Sans',sans-serif;color:var(--ink2);
+  cursor:pointer;background:var(--card);transition:all .15s;
+}
+.btn-sm:hover{background:var(--card2);border-color:var(--border2);}
+.btn-sm.green{background:var(--accent-bg);border-color:var(--accent-border);color:var(--accent);}
+
+.btn-add{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;background:var(--accent);color:#fff;
+  border:none;border-radius:var(--radius);font-size:13px;
+  font-family:'DM Sans',sans-serif;font-weight:500;cursor:pointer;
+  transition:background .15s;
+}
+.btn-add:hover{background:#155e44;}
+
+/* ---- RESULT BOX ---- */
+.result-box{
+  background:var(--card);border:1px solid var(--accent-border);
+  border-radius:var(--radius-lg);padding:1.1rem 1.25rem;
+  margin-top:14px;box-shadow:0 2px 12px rgba(26,122,90,.08);
+}
+.result-label{font-size:10px;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;}
+.result-text{font-size:14px;color:var(--ink);line-height:1.7;white-space:pre-wrap;}
+.result-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+
+/* ---- PROSPECT CARDS ---- */
+.p-list{display:flex;flex-direction:column;gap:8px;}
+.p-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:.9rem 1rem;display:flex;align-items:center;gap:12px;
+  cursor:pointer;transition:border-color .15s,box-shadow .15s;
+}
+.p-card:hover{border-color:var(--accent2);box-shadow:0 2px 12px rgba(26,122,90,.1);}
+.p-av{
+  width:40px;height:40px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Serif Display',serif;font-size:15px;flex-shrink:0;
+}
+.p-inf{flex:1;min-width:0;}
+.p-name{font-size:14px;font-weight:500;color:var(--ink);}
+.p-meta{font-size:12px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.p-badge{font-size:11px;padding:4px 10px;border-radius:20px;font-weight:500;flex-shrink:0;}
+.s0{background:#f0f0f6;color:#4a4d60;}
+.s1{background:#e8eef8;color:#2a4a8a;}
+.s2{background:#fdf3e3;color:#7a4f0a;}
+.s3{background:#eaf4e8;color:#235a1a;}
+.s4{background:var(--accent-bg);color:#1a5a3a;}
+.p-del{background:none;border:none;cursor:pointer;padding:4px;color:var(--ink4);border-radius:6px;font-size:18px;transition:color .15s;}
+.p-del:hover{color:#c0392b;}
+
+/* ---- PIPELINE ---- */
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px;}
+.kpi{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 6px;text-align:center;
+  box-shadow:var(--shadow);
+}
+.kpi-n{font-family:'DM Serif Display',serif;font-size:28px;color:var(--ink);line-height:1;}
+.kpi-l{font-size:10px;color:var(--ink3);margin-top:4px;line-height:1.3;}
+.kpi-bar{height:3px;border-radius:2px;margin-top:8px;}
+
+/* ---- REHBER ---- */
+.rh-item{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:1rem 1.1rem;margin-bottom:10px;
+  display:flex;gap:12px;align-items:flex-start;
+  box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s;
+}
+.rh-item:hover{border-color:var(--accent2);box-shadow:0 2px 12px rgba(26,122,90,.1);}
+.rh-icon{
+  width:38px;height:38px;border-radius:10px;background:var(--accent-bg);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.rh-icon i{font-size:20px;color:var(--accent);}
+.rh-title{font-size:14px;font-weight:500;color:var(--ink);margin-bottom:3px;}
+.rh-desc{font-size:12px;color:var(--ink3);line-height:1.55;}
+
+/* ---- MODAL ---- */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(15,17,23,.55);
+  display:none;align-items:center;justify-content:center;z-index:100;
+  backdrop-filter:blur(3px);padding:20px;
+}
+.modal-overlay.on{display:flex;}
+.modal{
+  background:var(--card);border-radius:var(--radius-xl);
+  padding:1.75rem;max-width:480px;width:100%;
+  box-shadow:var(--shadow-lg);animation:fadeUp .2s ease;
+}
+.modal-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--ink);margin-bottom:4px;}
+.modal-sub{font-size:13px;color:var(--ink3);margin-bottom:1.25rem;}
+.modal-actions{display:flex;gap:8px;margin-top:1.25rem;}
+.modal-close{
+  flex:1;padding:10px;border:1px solid var(--border2);border-radius:var(--radius);
+  background:none;font-size:14px;font-family:'DM Sans',sans-serif;
+  color:var(--ink2);cursor:pointer;
+}
+.modal-close:hover{background:var(--card2);}
+
+/* ---- SECTION HEAD ---- */
+.sec-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.sec-title{font-family:'DM Serif Display',serif;font-size:17px;color:var(--ink);}
+.sec-count{font-size:12px;color:var(--ink3);}
+
+/* ---- ALERTS ---- */
+.alert{border-radius:var(--radius);padding:.7rem 1rem;font-size:13px;margin:10px 0;line-height:1.6;display:flex;gap:8px;}
+.alert i{font-size:16px;flex-shrink:0;margin-top:1px;}
+.alert-info{background:var(--info-bg);border:1px solid var(--info-border);color:var(--info-text);}
+.alert-warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);}
+
+/* ---- ADD FORM ---- */
+.add-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:20px;box-shadow:var(--shadow);}
+.add-box-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--ink);margin-bottom:1rem;display:flex;align-items:center;gap:8px;}
+.add-box-title i{font-size:18px;color:var(--accent);}
+
+/* ---- EMPTY ---- */
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--ink3);}
+.empty i{font-size:36px;display:block;margin:0 auto 10px;opacity:.3;}
+.empty p{font-size:14px;}
+
+/* ---- STRATEJI MODAL ---- */
+.strat-result{
+  background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1rem;margin-top:1rem;font-size:13.5px;color:var(--ink2);
+  line-height:1.75;max-height:320px;overflow-y:auto;white-space:pre-wrap;
+}
+
+/* ---- RESPONSIVE ---- */
+@media(max-width:520px){
+  .form-grid{grid-template-columns:1fr;}
+  .field.full{grid-column:1;}
+  .kpi-row{grid-template-columns:repeat(3,1fr);}
+  .nav-btn span{display:none;}
+  .nav-btn{padding:10px;}
+}
+
+/* ---- MOD SWITCHER ---- */
+.mod-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;}
+.mod-btn{
+  padding:10px 8px;border:1px solid var(--border2);border-radius:var(--radius);
+  background:var(--card);color:var(--ink3);font-size:13px;
+  font-family:'DM Sans',sans-serif;font-weight:400;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:all .18s;
+}
+.mod-btn i{font-size:16px;}
+.mod-btn.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:500;box-shadow:0 1px 6px rgba(26,122,90,.2);}
+.mod-btn:not(.on):hover{background:var(--card2);color:var(--ink);}
+
+/* ---- SENARYO BADGE ---- */
+.senaryo-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--info-bg);border:1px solid var(--info-border);
+  color:var(--info-text);border-radius:20px;
+  padding:4px 10px;font-size:11px;font-weight:500;margin-bottom:10px;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="brand-mark"><i class="ti ti-users"></i></div>
+      <div>
+        <div class="brand-name">NM Asistanı</div>
+        <div class="brand-tag">Sağlık & Wellness · Network Marketing</div>
+      </div>
+    </div>
+    <div class="hdr-badge">
+      <div class="hdr-num" id="hdr-n">0</div>
+      <div class="hdr-lbl">prospect</div>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <button class="nav-btn on" onclick="goTab('mesaj',this)"><i class="ti ti-message-2"></i><span>Mesaj Üret</span></button>
+    <button class="nav-btn" onclick="goTab('prospect',this)"><i class="ti ti-users"></i><span>Prospectler</span></button>
+    <button class="nav-btn" onclick="goTab('pipeline',this)"><i class="ti ti-chart-bar"></i><span>Pipeline</span></button>
+    <button class="nav-btn" onclick="goTab('rehber',this)"><i class="ti ti-book-2"></i><span>Rehber</span></button>
+  </nav>
+
+  <!-- ========== MESAJ PANELİ ========== -->
+  <div id="tab-mesaj" class="panel on">
+
+    <!-- Mod seçici -->
+    <div class="mod-row" style="grid-template-columns:1fr 1fr 1fr">
+      <button class="mod-btn on" id="mod-yeni" onclick="setMod('yeni')">
+        <i class="ti ti-pencil-plus"></i> Yeni Mesaj
+      </button>
+      <button class="mod-btn" id="mod-cevap" onclick="setMod('cevap')">
+        <i class="ti ti-message-reply"></i> Gelen Cevap
+      </button>
+      <button class="mod-btn" id="mod-urun" onclick="setMod('urun')">
+        <i class="ti ti-bandage"></i> Ürün Danışmanı
+      </button>
+    </div>
+
+    <!-- ===== MOD A: YENİ MESAJ ===== -->
+    <div id="form-yeni">
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field"><label>İsim</label><input id="m-isim" type="text" placeholder="Ayşe" oninput="upv()"></div>
+        <div class="field"><label>Kanal</label>
+          <select id="m-kanal" onchange="kanalDegisti('m-kanal','m-kanal-ozel');upv()">
+            <optgroup label="Sosyal Medya">
+              <option>Instagram DM</option><option>Facebook Messenger</option>
+              <option>Facebook Grubu</option><option>TikTok DM</option>
+              <option>Twitter / X DM</option><option>Telegram</option>
+              <option>LinkedIn</option><option>YouTube Yorumu</option><option>Snapchat</option>
+            </optgroup>
+            <optgroup label="Mesajlaşma">
+              <option>WhatsApp</option><option>WhatsApp Grubu</option>
+              <option>SMS</option><option>E-posta</option>
+            </optgroup>
+            <optgroup label="Yüz Yüze">
+              <option>Yüz yüze</option><option>Telefon araması</option><option>Video görüşme</option>
+            </optgroup>
+            <optgroup label="Diğer">
+              <option value="__ozel__">+ Kendi kanalımı ekle...</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field" id="m-kanal-ozel-wrap" style="display:none">
+          <label>Kanal adı yaz</label>
+          <input id="m-kanal-ozel" type="text" placeholder="Örn: Discord, Clubhouse..." oninput="upv()">
+        </div>
+        <div class="field"><label>İlişki aşaması</label>
+          <select id="m-iliski" onchange="upv()">
+            <option>Tanımıyor</option><option>Az tanışıyor</option><option>Yakın</option>
+          </select>
+        </div>
+        <div class="field"><label>Hedef</label>
+          <select id="m-hedef" onchange="upv()">
+            <option>İlk temas</option><option>Randevu daveti</option><option>Takip mesajı</option><option>Ekibe davet</option>
+          </select>
+        </div>
+        <div class="field full"><label>Kişi hakkında <span style="font-weight:400;text-transform:none;letter-spacing:0">(opsiyonel)</span></label>
+          <textarea id="m-bilgi" placeholder="Spora ilgi duyuyor, ek gelir arıyor..." oninput="upv()"></textarea>
+        </div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-head">
+          <span class="preview-eye">Önizleme</span>
+          <div class="chips" id="pv-chips"></div>
+        </div>
+        <div class="preview-text" id="pv-body">Formu doldurunca burada mesaj taslağı oluşacak.</div>
+      </div>
+      <button class="btn-primary" onclick="generateMsg()">
+        <i class="ti ti-wand"></i> Mesaj Oluştur
+      </button>
+    </div>
+
+    <!-- ===== MOD B: GELEN MESAJA CEVAP ===== -->
+    <div id="form-cevap" style="display:none;margin-top:14px">
+      <div class="form-grid">
+        <div class="field"><label>Kişinin adı</label>
+          <input id="c-isim" type="text" placeholder="Ayşe">
+        </div>
+        <div class="field"><label>Kişi türü</label>
+          <select id="c-tip">
+            <option value="prospect">Prospect / Potansiyel müşteri</option>
+            <option value="musteri">Mevcut müşteri</option>
+            <option value="lider">Ekip lideri / Üst lider</option>
+            <option value="ekip">Ekip üyem</option>
+          </select>
+        </div>
+        <div class="field full"><label>Gelen mesaj <span style="font-weight:400;text-transform:none;letter-spacing:0">(karşı tarafın yazdığı)</span></label>
+          <textarea id="c-mesaj" placeholder="Buraya karşı taraftan gelen mesajı yapıştır...&#10;&#10;Örn: &quot;Hmm ilginç, ama bu piramit sistemi mi?&quot;" style="min-height:90px"></textarea>
+        </div>
+        <div class="field"><label>Senaryo <span style="font-weight:400;text-transform:none;letter-spacing:0">(otomatik tespit veya kendin seç)</span></label>
+          <select id="c-senaryo">
+            <option value="oto">🔍 Otomatik tespit et</option>
+            <optgroup label="İlk Temas & Merak">
+              <option value="ilk_cevap">İlk cevap verdi — sohbeti sürdür</option>
+              <option value="merak">Merak etti, soru soruyor</option>
+              <option value="dusuneyim">Düşüneyim / Sonra bakarım</option>
+            </optgroup>
+            <optgroup label="Şirket & Yasal İtirazlar">
+              <option value="itiraz_piramit">Piramit / MLM şüphesi</option>
+              <option value="itiraz_olumsuz_yorum">Olumsuz yorum gördüm / Araştırdım</option>
+              <option value="itiraz_inandirici_degil">İnandırıcı gelmiyor / Abartı</option>
+            </optgroup>
+            <optgroup label="Ürün İtirazları">
+              <option value="itiraz_urun_isler_mi">Ürünler gerçekten işe yarıyor mu?</option>
+              <option value="itiraz_cevremde_sonuc_yok">Çevremde deneyen sonuç almadı</option>
+              <option value="itiraz_urun_pahali">Ürün çok pahalı</option>
+            </optgroup>
+            <optgroup label="Kişisel İtirazlar">
+              <option value="itiraz_para">Param yok / Bütçem yok</option>
+              <option value="itiraz_vakit">Vaktim yok / Çok meşgulüm</option>
+              <option value="itiraz_ilgi">İlgimi çekmiyor</option>
+              <option value="itiraz_deneyim_yok">Deneyimim yok / Beceremem</option>
+              <option value="itiraz_utanma_cevre">Çevreme nasıl anlatırım / Utanıyorum</option>
+              <option value="itiraz_zaten_is_var">Zaten işim var</option>
+              <option value="itiraz_ailem_izin_vermez">Ailem izin vermiyor / Eşim karşı</option>
+              <option value="itiraz_daha_once_denedim">Daha önce NM denedim, olmadı</option>
+              <option value="itiraz_saglik_sorunu">Sağlık sorunum var</option>
+              <option value="itiraz_yasim_uygun_mu">Yaşım uygun mu?</option>
+              <option value="itiraz_teknolojiyi_bilmiyorum">Teknolojiyi / sosyal medyayı bilmiyorum</option>
+            </optgroup>
+            <optgroup label="Randevu">
+              <option value="randevu_ertele">Randevuyu erteliyor / iptal ediyor</option>
+              <option value="randevu_gelmedi">Randevuya gelmedi, cevap vermiyor</option>
+            </optgroup>
+            <optgroup label="Ekip Senaryoları">
+              <option value="ekip_motivasyon">Ekip üyesi motivasyon kaybetti</option>
+              <option value="ekip_soru">Ekip üyesi soru soruyor</option>
+              <option value="ekip_itiraz">Ekip üyesi: Bu iş olmaz diyor</option>
+              <option value="ekip_hedef_yok">Ekip üyesinin hedefi yok</option>
+              <option value="lider_iletisim">Liderle iletişim</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field"><label>Ton</label>
+          <select id="c-ton">
+            <option value="oto">Bağlama göre otomatik</option>
+            <option value="sicak">Sıcak ve samimi</option>
+            <option value="profesyonel">Profesyonel ve güven verici</option>
+            <option value="empatik">Empatik ve anlayışlı</option>
+            <option value="motive">Motive edici ve enerjik</option>
+            <option value="kisa">Kısa ve net</option>
+          </select>
+        </div>
+        <div class="field full"><label>Ek bağlam <span style="font-weight:400;text-transform:none;letter-spacing:0">(opsiyonel)</span></label>
+          <textarea id="c-baglam" placeholder="Örn: 2 haftadır konuşuyoruz, randevuya bir kez geldi ama ürün almadı..." style="min-height:60px"></textarea>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="generateCevap()">
+        <i class="ti ti-message-reply"></i> Cevap Üret
+      </button>
+    </div>
+
+    <!-- ===== MOD C: ÜRÜN DANIŞMANI ===== -->
+    <div id="form-urun" style="display:none;margin-top:14px">
+      <div class="alert alert-info" style="margin-bottom:14px">
+        <i class="ti ti-info-circle"></i>
+        <span>Kişinin şikayetini veya ihtiyacını yaz — asistan en uygun One More ürününü belirlesin, sunum metnini ve sık sorulan soruları hazırlasın.</span>
+      </div>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Kişinin şikayeti / ihtiyacı</label>
+          <textarea id="u-sikayet" placeholder="Örn: Bel fıtığı var, çok ağrı çekiyor...&#10;Örn: Migreni var, ilaç kullanmak istemiyor&#10;Örn: Uyuyamıyor, sabah yorgun kalkıyor&#10;Örn: Kilo vermek istiyor ama diyet tutturamıyor&#10;Örn: Saçları dökülüyor, çözüm arıyor" style="min-height:100px"></textarea>
+        </div>
+        <div class="field">
+          <label>Kişi türü</label>
+          <select id="u-tip">
+            <option value="musteri">Potansiyel müşteri</option>
+            <option value="ekip">Ekip üyem (yeni başlayan)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Çıktı dili / tonu</label>
+          <select id="u-ton">
+            <option value="sade">Sade ve anlaşılır</option>
+            <option value="detayli">Detaylı ve teknik</option>
+            <option value="kisa">Çok kısa özet</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="generateUrun()">
+        <i class="ti ti-search"></i> Ürün Öner & Sunum Hazırla
+      </button>
+
+      <!-- Ürün danışman sonuç alanı -->
+      <div id="urun-result" style="display:none;margin-top:16px">
+        <!-- Ürün kartı -->
+        <div id="urun-card" style="background:var(--accent-bg);border:1px solid var(--accent-border);border-radius:var(--radius-lg);padding:1.1rem 1.25rem;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div id="urun-emoji" style="font-size:28px"></div>
+            <div>
+              <div id="urun-isim" style="font-family:var(--font-display,serif);font-size:17px;color:var(--ink);font-weight:500"></div>
+              <div id="urun-etiket" style="font-size:11px;color:var(--accent);font-weight:500;text-transform:uppercase;letter-spacing:.5px"></div>
+            </div>
+          </div>
+          <div id="urun-aciklama" style="font-size:13.5px;color:var(--ink2);line-height:1.7"></div>
+        </div>
+
+        <!-- Sunum metni -->
+        <div class="result-box" style="margin-bottom:12px">
+          <div class="result-label">Hazır sunum metni</div>
+          <div class="result-text" id="urun-sunum"></div>
+          <div class="result-actions">
+            <button class="btn-sm" onclick="copyById('urun-sunum',this)"><i class="ti ti-copy"></i> Kopyala</button>
+          </div>
+        </div>
+
+        <!-- SSS kartları -->
+        <div id="urun-sss-wrap">
+          <div style="font-size:11px;font-weight:500;color:var(--ink3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Sık sorulan sorular & cevaplar</div>
+          <div id="urun-sss" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <!-- İkinci ürün önerisi (varsa) -->
+        <div id="urun-ek-wrap" style="display:none;margin-top:12px">
+          <div style="font-size:11px;font-weight:500;color:var(--ink3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Destekleyici ürün önerisi</div>
+          <div id="urun-ek" style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;font-size:13.5px;color:var(--ink2);line-height:1.65"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sonuç kutusu (her iki mod için ortak) -->
+    <div class="result-box" id="msg-result" style="display:none;margin-top:14px">
+      <div class="result-label" id="msg-label">Üretilen mesaj</div>
+      <div class="result-text" id="msg-text"></div>
+      <div class="result-actions">
+        <button class="btn-sm" onclick="copyMsg(this)"><i class="ti ti-copy"></i> Kopyala</button>
+        <button class="btn-sm" onclick="regenCurrent()"><i class="ti ti-refresh"></i> Yeniden üret</button>
+        <button class="btn-sm green" onclick="saveToProspect()"><i class="ti ti-user-plus"></i> Prospecte ekle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PROSPECT PANELİ ========== -->
+  <div id="tab-prospect" class="panel">
+    <div class="add-box">
+      <div class="add-box-title"><i class="ti ti-user-plus"></i> Yeni Prospect Ekle</div>
+      <div class="form-grid">
+        <div class="field"><label>İsim</label><input id="pi-isim" type="text" placeholder="Mehmet K."></div>
+        <div class="field"><label>Aşama</label>
+          <select id="pi-asama">
+            <option value="0">Temas yok</option><option value="1">İlk temas yapıldı</option>
+            <option value="2">Randevu verildi</option><option value="3">Görüşme yapıldı</option><option value="4">Ekipte</option>
+          </select>
+        </div>
+        <div class="field"><label>Kanal</label>
+          <select id="pi-kanal" onchange="kanalDegisti('pi-kanal','pi-kanal-ozel')">
+            <optgroup label="Sosyal Medya">
+              <option>Instagram DM</option>
+              <option>Facebook Messenger</option>
+              <option>Facebook Grubu</option>
+              <option>TikTok DM</option>
+              <option>Twitter / X DM</option>
+              <option>Telegram</option>
+              <option>LinkedIn</option>
+              <option>YouTube Yorumu</option>
+              <option>Snapchat</option>
+            </optgroup>
+            <optgroup label="Mesajlaşma">
+              <option>WhatsApp</option>
+              <option>WhatsApp Grubu</option>
+              <option>SMS</option>
+              <option>E-posta</option>
+            </optgroup>
+            <optgroup label="Yüz Yüze">
+              <option>Yüz yüze</option>
+              <option>Telefon araması</option>
+              <option>Video görüşme</option>
+            </optgroup>
+            <optgroup label="Diğer">
+              <option value="__ozel__">+ Kendi kanalımı ekle...</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field" id="pi-kanal-ozel-wrap" style="display:none">
+          <label>Kanal adı yaz</label>
+          <input id="pi-kanal-ozel" type="text" placeholder="Örn: Discord, Clubhouse...">
+        </div>
+        <div class="field"><label>Not</label><input id="pi-not" type="text" placeholder="Spora ilgi, ek gelir arıyor..."></div>
+      </div>
+      <button class="btn-add" onclick="addProspect()"><i class="ti ti-plus"></i> Ekle</button>
+    </div>
+
+    <div class="sec-head">
+      <div class="sec-title">Prospectlerim</div>
+      <div class="sec-count" id="p-cnt"></div>
+    </div>
+    <div id="p-list" class="p-list"></div>
+  </div>
+
+  <!-- ========== PİPELİNE PANELİ ========== -->
+  <div id="tab-pipeline" class="panel">
+    <div class="sec-head"><div class="sec-title">Pipeline Özeti</div></div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-n" id="kp0">0</div><div class="kpi-l">Temas yok</div><div class="kpi-bar" style="background:#c0c0cc"></div></div>
+      <div class="kpi"><div class="kpi-n" id="kp1">0</div><div class="kpi-l">Temas kuruldu</div><div class="kpi-bar" style="background:#5a8ad0"></div></div>
+      <div class="kpi"><div class="kpi-n" id="kp2">0</div><div class="kpi-l">Randevulandı</div><div class="kpi-bar" style="background:#e0a020"></div></div>
+      <div class="kpi"><div class="kpi-n" id="kp3">0</div><div class="kpi-l">Görüşüldü</div><div class="kpi-bar" style="background:#60aa40"></div></div>
+      <div class="kpi"><div class="kpi-n" id="kp4">0</div><div class="kpi-l">Ekipte</div><div class="kpi-bar" style="background:var(--accent)"></div></div>
+    </div>
+    <div class="sec-head"><div class="sec-title">Aksiyon Gerektiren</div></div>
+    <div id="pipe-list" class="p-list"></div>
+  </div>
+
+  <!-- ========== REHBER PANELİ ========== -->
+  <div id="tab-rehber" class="panel">
+    <div class="sec-head"><div class="sec-title">Hızlı Strateji Rehberi</div></div>
+    <div class="alert alert-info" style="margin-bottom:16px">
+      <i class="ti ti-info-circle"></i>
+      <span>Bir konuya tıkla — strateji ve örnek mesajlar çıksın.</span>
+    </div>
+
+    <div class="rh-item" onclick="showRehber('instagram')">
+      <div class="rh-icon"><i class="ti ti-brand-instagram"></i></div>
+      <div>
+        <div class="rh-title">Instagram DM — İlk temas stratejisi</div>
+        <div class="rh-desc">3-5 gün sessiz etkileşim, ardından samimi DM. Ürün asla ilk mesajda gelmez.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+    <div class="rh-item" onclick="showRehber('takip')">
+      <div class="rh-icon"><i class="ti ti-clock-exclamation"></i></div>
+      <div>
+        <div class="rh-title">Randevuya gelmeyenleri kurtarma</div>
+        <div class="rh-desc">Yumuşak hatırlatma → yeniden planlama → kapıyı açık bırak.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+    <div class="rh-item" onclick="showRehber('musteri')">
+      <div class="rh-icon"><i class="ti ti-arrow-up-right"></i></div>
+      <div>
+        <div class="rh-title">Müşteriyi ekibe dönüştürme</div>
+        <div class="rh-desc">Ürünü öneren, paylaşan, ek gelirden söz eden müşteri hazır adaydır.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+    <div class="rh-item" onclick="showRehber('lider')">
+      <div class="rh-icon"><i class="ti ti-trophy"></i></div>
+      <div>
+        <div class="rh-title">3 aylık lider yetiştirme planı</div>
+        <div class="rh-desc">Günlük check-in → haftalık bire-bir → bağımsız uygulama.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+    <div class="rh-item" onclick="showRehber('whatsapp')">
+      <div class="rh-icon"><i class="ti ti-brand-whatsapp"></i></div>
+      <div>
+        <div class="rh-title">WhatsApp sesli mesaj stratejisi</div>
+        <div class="rh-desc">Sesli mesaj yazıdan çok daha kişisel. Doğru kullanım rehberi.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+    <div class="rh-item" onclick="showRehber('pitch')">
+      <div class="rh-icon"><i class="ti ti-microphone"></i></div>
+      <div>
+        <div class="rh-title">30 saniyelik elevator pitch</div>
+        <div class="rh-desc">Merak uyandır, detay verme — sohbeti randevuya çek.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+
+    <div class="rh-item" onclick="showRehber('kazanc')">
+      <div class="rh-icon"><i class="ti ti-cash"></i></div>
+      <div>
+        <div class="rh-title">One More Kazanç Planı — 8 Kanal</div>
+        <div class="rh-desc">Fast Start, 3D, 4X4, Takım, Eşleşme, Kariyer, Araç, Market Sales — hepsi burada.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+
+    <div class="rh-item" onclick="showRehber('urun')">
+      <div class="rh-icon"><i class="ti ti-bandage"></i></div>
+      <div>
+        <div class="rh-title">One More Ürün Rehberi — Kime, Hangi Bant?</div>
+        <div class="rh-desc">Painless, Slim Style, B12 Plus, Melatonin Plus, Omevia, Lumiere — doğru eşleştirme.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+
+    <div class="rh-item" onclick="showRehber('kariyer')">
+      <div class="rh-icon"><i class="ti ti-award"></i></div>
+      <div>
+        <div class="rh-title">Kariyer Basamakları — Guest'ten Royal Diamond'a</div>
+        <div class="rh-desc">18 kariyer seviyesi, hedef belirleme ve bir sonraki adım stratejisi.</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:auto;align-self:center;"></i>
+    </div>
+  </div>
+
+</div><!-- /shell -->
+
+<!-- ========== STRATEJI MODAL ========== -->
+<div class="modal-overlay" id="strat-modal">
+  <div class="modal">
+    <div class="modal-title" id="strat-title"></div>
+    <div class="modal-sub" id="strat-sub"></div>
+    <div class="strat-result" id="strat-body"></div>
+    <div class="modal-actions">
+      <button class="modal-close" onclick="closeModal('strat-modal')">Kapat</button>
+      <button class="btn-sm green" onclick="copyStrat()"><i class="ti ti-copy"></i> Kopyala</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PROSPECT STRATEJI MODAL ========== -->
+<div class="modal-overlay" id="p-modal">
+  <div class="modal">
+    <div class="modal-title" id="pm-title"></div>
+    <div class="modal-sub" id="pm-sub"></div>
+    <div class="strat-result" id="pm-body"></div>
+    <div class="modal-actions">
+      <button class="modal-close" onclick="closeModal('p-modal')">Kapat</button>
+      <button class="btn-sm green" onclick="copyPModal()"><i class="ti ti-copy"></i> Mesajı kopyala</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== DATA =====================
+const STAGES = ['Temas yok','İlk temas yapıldı','Randevu verildi','Görüşme yapıldı','Ekipte'];
+const AV_BG  = ['#f0f0f6','#e8eef8','#fdf3e3','#eaf4e8','#e8f5f0'];
+const AV_TC  = ['#4a4d60','#2a4a8a','#7a4f0a','#235a1a','#1a5a3a'];
+const S_CLS  = ['s0','s1','s2','s3','s4'];
+
+let prospects = [];
+try { prospects = JSON.parse(localStorage.getItem('nma_standalone') || '[]'); } catch(e){}
+
+// ===================== KANAL YARDIMCISI =====================
+function kanalDegisti(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const wrap = document.getElementById(inputId + '-wrap');
+  if (sel.value === '__ozel__') {
+    wrap.style.display = 'flex';
+    document.getElementById(inputId).focus();
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+function getKanal(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  if (sel.value === '__ozel__') {
+    return document.getElementById(inputId).value.trim() || 'Özel kanal';
+  }
+  return sel.value;
+}
+
+// ===================== NAV =====================
+function goTab(name, btn) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.getElementById('tab-' + name).classList.add('on');
+  if (name === 'pipeline') renderPipeline();
+  if (name === 'prospect') renderProspects();
+}
+
+// ===================== MESAJ =====================
+const TEMPLATES = {
+  'İlk temas': {
+    'Tanımıyor': [
+      (n,k,b) => `Merhaba ${n}! ${b?'Paylaşımlarını görünce takip etmeden edemedim':'Profilini görünce merak ettim'} 😊 Nasılsın, neler yapıyorsun bu aralar?`,
+      (n,k,b) => `Selam ${n}! ${b||'Profilindeki içerikler'} dikkatimi çekti. Bir ara sohbet edebilir miyiz?`,
+    ],
+    'Az tanışıyor': [
+      (n,k,b) => `Selam ${n}! Geçen kısa konuşmamız aklımda kalmıştı${b?', '+ b.split(',')[0].toLowerCase():''}. Bir ara kahve içip devam etsek nasıl olur?`,
+      (n,k,b) => `Merhaba ${n}! Seni düşündüm, nasılsın? Seninle paylaşmak istediğim bir şey var, uygun bir vaktin olur mu?`,
+    ],
+    'Yakın': [
+      (n,k,b) => `Hey ${n}! Seni düşündüm ve seninle mutlaka bir şey paylaşmam lazım 🙂 Bu hafta boş vaktin var mı?`,
+      (n,k,b) => `Selam ${n}! ${b?b.split(',')[0]+' konusunda':'Bu konuda'} seninle konuşmak istiyordum. Bir ara buluşalım mı?`,
+    ],
+  },
+  'Randevu daveti': {
+    'Tanımıyor': [
+      (n,k,b) => `Merhaba ${n}! Seninle 20-30 dakika oturup sağlık ve yaşam kalitesi üzerine güzel bir sohbet etmek istiyorum. ${k==='WhatsApp'?'Bir video görüşme yapabilir miyiz?':'Bu hafta sana uygun bir vakit var mı?'}`,
+    ],
+    'Az tanışıyor': [
+      (n,k,b) => `Selam ${n}! Seninle konuşmak istediğim bir konu var, 20 dakikan olur mu bu hafta? Çok işine yarayacağını düşünüyorum.`,
+    ],
+    'Yakın': [
+      (n,k,b) => `Hey ${n}! Sana çok güzel bir şey göstermek istiyorum, bu hafta kahve içelim mi? Kesinlikle beğeneceksin 😊`,
+    ],
+  },
+  'Takip mesajı': {
+    'Tanımıyor': [
+      (n,k,b) => `Merhaba ${n}! Geçen konuşmamızdan bu yana aklında bir şey takılı kaldı mı? Soruların varsa cevaplamaktan mutluluk duyarım 😊`,
+    ],
+    'Az tanışıyor': [
+      (n,k,b) => `Selam ${n}! Geçen buluştuğumuzdan beri nasılsın? Anlattıklarımı düşündün mü biraz?`,
+    ],
+    'Yakın': [
+      (n,k,b) => `Hey ${n}! Senden haber bekledim 😊 Ne düşünüyorsun, konuşalım mı?`,
+    ],
+  },
+  'Ekibe davet': {
+    'Tanımıyor': [
+      (n,k,b) => `Merhaba ${n}! Ürünleri kullanan biri olarak çok mutluyum, ama asıl büyük şeyi şimdi görüyorum — bu işi yapmak isteyenlere harika bir fırsat var. Seninle 15 dakika konuşabilir miyiz?`,
+    ],
+    'Az tanışıyor': [
+      (n,k,b) => `Selam ${n}! Seni gözlemledim ve bu işe çok uygun biri olduğunu düşünüyorum. Ciddi bir fırsattan bahsetmek istiyorum, merak eder misin?`,
+    ],
+    'Yakın': [
+      (n,k,b) => `Hey ${n}! Seninle bu işi birlikte yapmak istiyorum — gerçekten çok iyi bir ekip olurduk. Ne düşünürsün?`,
+    ],
+  },
+};
+
+let lastMsg = '';
+let lastMsgContext = {};
+
+function upv() {
+  const isim  = document.getElementById('m-isim').value.trim() || '[İsim]';
+  const kanal = getKanal('m-kanal','m-kanal-ozel');
+  const hedef = document.getElementById('m-hedef').value;
+  const bilgi = document.getElementById('m-bilgi').value.trim();
+  document.getElementById('pv-chips').innerHTML =
+    `<span class="chip">${kanal}</span><span class="chip">${hedef}</span>`;
+  const body = document.getElementById('pv-body');
+  body.textContent = `"${isim}" için ${kanal} üzerinden ${hedef.toLowerCase()} mesajı — samimi, satış kokmayan dil.${bilgi?' Kişi bilgisi: '+bilgi:''}`;
+  body.className = 'preview-text filled';
+}
+
+function generateMsg() {
+  const isim   = document.getElementById('m-isim').value.trim() || 'Kişi';
+  const kanal  = getKanal('m-kanal','m-kanal-ozel');
+  const iliski = document.getElementById('m-iliski').value;
+  const hedef  = document.getElementById('m-hedef').value;
+  const bilgi  = document.getElementById('m-bilgi').value.trim();
+
+  const temps = (TEMPLATES[hedef]?.[iliski]) || (TEMPLATES['İlk temas']['Az tanışıyor']);
+  const fn = temps[Math.floor(Math.random() * temps.length)];
+  const msg = fn(isim, kanal, bilgi);
+
+  lastMsg = msg;
+  lastMsgContext = {isim, kanal, iliski, hedef, bilgi};
+
+  document.getElementById('msg-label').textContent = `${hedef} · ${kanal}`;
+  document.getElementById('msg-text').textContent = msg;
+  document.getElementById('msg-result').style.display = 'block';
+  document.getElementById('msg-result').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function regenerateMsg() {
+  const {isim,kanal,iliski,hedef,bilgi} = lastMsgContext;
+  const temps = (TEMPLATES[hedef]?.[iliski]) || (TEMPLATES['İlk temas']['Az tanışıyor']);
+  const fn = temps[Math.floor(Math.random() * temps.length)];
+  const msg = fn(isim||'Kişi', kanal, bilgi);
+  lastMsg = msg;
+  document.getElementById('msg-text').textContent = msg;
+}
+
+function copyMsg(btn) {
+  navigator.clipboard.writeText(lastMsg).then(() => {
+    btn.innerHTML = '<i class="ti ti-check"></i> Kopyalandı';
+    setTimeout(() => { btn.innerHTML = '<i class="ti ti-copy"></i> Kopyala'; }, 2000);
+  });
+}
+
+function saveToProspect() {
+  const {isim,kanal,iliski} = lastMsgContext;
+  if (!isim || isim === 'Kişi') { alert('Önce isim gir.'); return; }
+  prospects.push({
+    id: Date.now(), isim, asama: 0,
+    kanal: kanal.replace(' DM',''),
+    not: lastMsg.slice(0,60)+'…',
+    tarih: new Date().toLocaleDateString('tr-TR')
+  });
+  save(); renderHeader();
+  alert(`${isim} prospect listesine eklendi!`);
+}
+
+// ===================== PROSPECTS =====================
+function ini(n) { return n.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase(); }
+
+function addProspect() {
+  const isim = document.getElementById('pi-isim').value.trim();
+  if (!isim) { document.getElementById('pi-isim').focus(); return; }
+  prospects.push({
+    id: Date.now(), isim,
+    asama: +document.getElementById('pi-asama').value,
+    kanal: getKanal('pi-kanal','pi-kanal-ozel'),
+    not: document.getElementById('pi-not').value.trim(),
+    tarih: new Date().toLocaleDateString('tr-TR')
+  });
+  document.getElementById('pi-isim').value = '';
+  document.getElementById('pi-not').value = '';
+  save(); renderProspects(); renderHeader();
+}
+
+function renderProspects() {
+  const list = document.getElementById('p-list');
+  document.getElementById('p-cnt').textContent = prospects.length + ' kişi';
+  if (!prospects.length) {
+    list.innerHTML = '<div class="empty"><i class="ti ti-users"></i><p>Henüz prospect eklemedin.</p></div>';
+    return;
+  }
+  list.innerHTML = prospects.map((p,i) => `
+    <div class="p-card">
+      <div class="p-av" style="background:${AV_BG[p.asama]};color:${AV_TC[p.asama]}">${ini(p.isim)}</div>
+      <div class="p-inf" onclick="askProspect(${i})" style="cursor:pointer">
+        <div class="p-name">${p.isim}</div>
+        <div class="p-meta">${p.kanal} · ${p.not||STAGES[p.asama]} · ${p.tarih}</div>
+      </div>
+      <span class="p-badge ${S_CLS[p.asama]}">${STAGES[p.asama]}</span>
+      <button class="p-del" onclick="delProspect(${i})" title="Sil"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+}
+
+function delProspect(i) {
+  if (!confirm(`"${prospects[i].isim}" silinsin mi?`)) return;
+  prospects.splice(i,1);
+  save(); renderProspects(); renderHeader(); renderPipeline();
+}
+
+function askProspect(i) {
+  const p = prospects[i];
+  const strats = {
+    0: `Henüz temas kurulmamış. Şu adımları takip et:\n\n1. ${p.kanal}'da 3-5 gün sessiz etkileşim kur\n2. Beğen, yorum yap, story'e tepki ver\n3. Tanıdık hissettikten sonra samimi bir ilk mesaj at\n\nÖrnek mesaj:\n"Merhaba ${p.isim}! Paylaşımlarını görünce takip etmeden edemedim 😊 Nasılsın, neler yapıyorsun bu aralar?"`,
+    1: `İlk temas kurulmuş. Şu adımları takip et:\n\n1. Sohbeti sürdür, ürün/iş konuşma\n2. 3-5 karşılıklı mesajdan sonra randevu öner\n3. Samimi kal, merak uyandır\n\nÖrnek takip mesajı:\n"Selam ${p.isim}! Geçen konuşmamız aklımda kaldı, seninle paylaşmak istediğim bir şey var. Bu hafta 20 dakikan olur mu?"`,
+    2: `Randevu verilmiş — görüşme öncesi:\n\n1. Gün önce hafif bir hatırlatma gönder\n2. Görüşme için hazırlan: ihtiyaçlarını dinle, çözümü sun\n3. Soru sormaya teşvik et\n\nHatırlatma mesajı:\n"Merhaba ${p.isim}! Yarınki buluşmamıza hazır mısın? 😊 Güzel bir sohbet olacak!"`,
+    3: `Görüşme yapılmış — karar aşaması:\n\n1. 24-48 saat içinde takip mesajı at\n2. Soru varsa yanıtla, baskı yapma\n3. Tereddütleri anlamaya çalış\n\nTakip mesajı:\n"Selam ${p.isim}! Görüşmemizden sonra ne düşündüğünü merak ettim. Aklında kalan sorular var mı?"`,
+    4: `${p.isim} ekipte! Şu adımları takip et:\n\n1. İlk hafta: her gün kısa check-in\n2. 2-4. hafta: haftalık bire-bir görüşme\n3. 2. ay: bağımsız uygulama ve ilk ekibini kurma\n\nMotivasyonu canlı tut:\n"Selam ${p.isim}! Bu hafta nasıl gidiyor? Bir zorluk varsa hemen konuşalım 💪"`,
+  };
+  document.getElementById('pm-title').textContent = p.isim;
+  document.getElementById('pm-sub').textContent = `${STAGES[p.asama]} · ${p.kanal}`;
+  document.getElementById('pm-body').textContent = strats[p.asama];
+  document.getElementById('p-modal').classList.add('on');
+}
+
+function copyPModal() {
+  const text = document.getElementById('pm-body').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('Kopyalandı!'));
+}
+
+// ===================== PİPELİNE =====================
+function renderPipeline() {
+  const c = [0,0,0,0,0];
+  prospects.forEach(p => c[p.asama]++);
+  c.forEach((n,i) => document.getElementById('kp'+i).textContent = n);
+  const aktif = prospects.filter(p => p.asama < 4);
+  const list = document.getElementById('pipe-list');
+  if (!aktif.length) {
+    list.innerHTML = '<div class="empty"><i class="ti ti-chart-bar"></i><p>Aksiyon bekleyen prospect yok.</p></div>';
+    return;
+  }
+  list.innerHTML = aktif.map((p) => {
+    const i = prospects.indexOf(p);
+    return `<div class="p-card" onclick="askProspect(${i})">
+      <div class="p-av" style="background:${AV_BG[p.asama]};color:${AV_TC[p.asama]}">${ini(p.isim)}</div>
+      <div class="p-inf">
+        <div class="p-name">${p.isim}</div>
+        <div class="p-meta">${p.kanal} · ${STAGES[p.asama]}</div>
+      </div>
+      <span class="p-badge ${S_CLS[p.asama]}">${STAGES[p.asama]}</span>
+      <i class="ti ti-chevron-right" style="color:var(--ink4);flex-shrink:0;font-size:18px;margin-left:4px;"></i>
+    </div>`;
+  }).join('');
+}
+
+// ===================== REHBER =====================
+const REHBER = {
+  instagram: {
+    title: 'Instagram DM — One More için ilk temas',
+    sub: 'Adım adım yaklaşım rehberi',
+    body: `ALTIN KURAL: Asla ilk mesajda ürün adı veya One More'u söyleme.
+
+AŞAMA 1 — Sessiz etkileşim (3-5 gün)
+• Paylaşımlarını beğen, story'lerine tepki ver
+• Sağlık/yaşam içeriklerine yorum bırak
+• "Seni tanıdım" hissini oluştur
+
+AŞAMA 2 — İlk DM (ürün/şirket adı YOK)
+"Merhaba [İsim]! Paylaşımların çok ilham verici 😊 Sağlıklı yaşam konusunda ciddi misin?"
+
+AŞAMA 3 — Sohbeti sürdür (3-5 mesaj)
+• Ağrı noktalarını dinle (sırt ağrısı, enerji, kilo...)
+• Hangi One More ürününe uygun olduğunu belirle
+• Kendi deneyiminden bahset — "Ben de aynı sorunu yaşıyordum"
+
+AŞAMA 4 — Randevuya çek
+"Seninle çok güzel bir şey paylaşmak istiyorum, bu hafta 20 dakikan olur mu?"
+
+One More ürün eşleştirme:
+🩹 Ağrı, stres → Painless Night Glu
+⚡ Yorgunluk, vitamin eksikliği → B12 Plus
+🔥 Kilo, metabolizma → Slim Style
+😴 Uyku problemi → Melatonin Plus
+💊 Genel sağlık takviyesi → Omevia
+✨ Cilt, güzellik → Lumiere
+
+❌ YAPMA: "One More" adını ilk mesajda söyleme / hemen link gönderme
+✅ YAP: Sorunu dinle, çözümü sun, güven inşa et`
+  },
+  takip: {
+    title: 'Randevuya gelmeyenleri kurtarma',
+    sub: '3 adımlı takip stratejisi',
+    body: `Randevuya gelmedi — panik yapma, bu çok normal.
+
+ADIM 1 — 30-60 dakika sonra (yumuşak)
+"Merhaba [İsim]! Merak ettim, her şey yolunda mı? 😊"
+
+ADIM 2 — 2 gün sonra (yeniden planla)
+"Selam [İsim]! Geçen sefer uygun olmadı, anlıyorum. Bu hafta başka bir vakit ayarlayabilir miyiz?"
+
+ADIM 3 — 1 hafta sonra (kapıyı açık bırak)
+"Merhaba [İsim]! Seni zorlamak istemiyorum ama kapı her zaman açık. Hazır hissettiğinde buradayım 🙂"
+
+ALTIN KURAL:
+• Suçlama yok, anlayış var
+• Baskı değil, merak uyandır
+• 3 denemeden sonra daha uzun bekle
+• "Neden gelmedin?" asla sormayacaksın`
+  },
+  musteri: {
+    title: 'Müşteriyi ekibe dönüştürme',
+    sub: 'Doğru zamanlama ve dönüşüm mesajları',
+    body: `HAZIR ADAYIN İŞARETLERİ:
+✓ One More ürününü çevresine öneriyor
+✓ Sosyal medyada paylaşıyor
+✓ "Bunu nasıl yaptın?" diye soruyor
+✓ Ek gelirden bahsediyor
+
+DÖNÜŞÜM MESAJI:
+"[İsim], seni gözlemliyorum ve bu işe gerçekten çok uygun biri olduğunu düşünüyorum. One More'da Guest olarak başlayıp kariyer basamaklarını çıkabilirsin. 15 dakika konuşabilir miyiz?"
+
+SORULARA HAZIR OL:
+S: Ne kadar kazanılır?
+C: Fast Start Bonus ile ilk kaydından anında kazanırsın. Ekip büyüdükçe Takım + Eşleşme Bonusu da eklenir.
+
+S: Vaktim yok.
+C: Guest'ten Starter'a geçmek için sadece 2 kayıt yeterli.
+
+S: Piramit sistemi mi?
+C: One More 2014'ten beri yasal, belgeli şirket. 30+ gerçek ürün var.`
+  },
+  lider: {
+    title: '3 aylık lider yetiştirme planı',
+    sub: 'Yeni ekip üyesi için haftalık takip',
+    body: `1. HAFTA — Temel kurulum
+• Her gün 5-10 dk check-in
+• One More ürünlerini tanıt ve kullandır
+• İlk 5 kişilik isim listesi yap
+• Guest → Starter hedefi: 2 kayıt
+• Fast Start Bonus kazandır
+
+2-4. HAFTA — İlk adımlar
+• Haftalık bire-bir görüşme (30 dk)
+• 3D veya 4X4 Bonus hedefle
+• Builder kariyer hedefle
+
+2. AY — Bağımsızlık
+• Bronze / Silver kariyer hedefle
+• Takım Bonusu almaya başlasın
+
+3. AY — Lider geçişi
+• Gold kariyer hedefle
+• Eşleşme Bonusu devreye girsin
+• Araç Bonusu hedefini konuşun
+
+ALTIN KURAL: "Ne yapardın?" → düşündür → rehberlik et.`
+  },
+  whatsapp: {
+    title: 'WhatsApp sesli mesaj stratejisi',
+    sub: 'Daha kişisel, daha etkili iletişim',
+    body: `NEDEN SESLİ MESAJ?
+• Yazıdan 3-4x daha kişisel hissettiriyor
+• Tonunu, enerjini aktarırsın
+• Cevap alma oranı daha yüksek
+
+NE ZAMAN SESLİ MESAJ AT?
+✓ İlişki kurulduktan sonra
+✓ One More hakkında soru sorunca
+✓ Randevu davetlerinde
+✓ Motivasyon ve destek mesajlarında
+
+NASIL KAYIT ALIRSIN?
+1. Sessiz ortamda kayıt al
+2. Gülümseyerek konuş
+3. 30-60 saniye ideal uzunluk
+
+ÖRNEK AÇILIŞ:
+"Merhaba [İsim]! Sana yazmak yerine sesli mesaj atmak istedim, çünkü paylaşmak istediğim şey gerçekten çok özel..."
+
+❌ YAPMA:
+• 3 dakikadan uzun sesli mesaj
+• Gürültülü ortamda kayıt
+• İlk temasta sesli mesaj`
+  },
+  pitch: {
+    title: '30 saniyelik elevator pitch',
+    sub: '3 farklı versiyon — duruma göre seç',
+    body: `VERSİYON 1 — Ürün odaklı
+"Geçen ay ağrım için bir şey denedim, bandı yapıştırıyorsun ve etkisini hissediyorsun. Sana anlatmak istiyorum, merak eder misin?"
+
+VERSİYON 2 — Gelir odaklı
+"Bir arkadaşım beni bir sistemle tanıştırdı — hem sağlığımı düzeltti hem de ek gelir kazanıyorum. One More International ile çalışıyorum. Bu hafta 20 dakikan var mı?"
+
+VERSİYON 3 — Kariyer odaklı
+"One More International'da 18 kariyer seviyesi var, en üstte Royal Diamond. Ben Guest olarak başladım, hedefim Gold. Seninle konuşabilir miyiz?"
+
+ALTIN KURALLAR:
+✓ "One More" adını merak uyandırdıktan sonra söyle
+✓ Kendi deneyiminden konuş
+✓ "MLM" veya "piramit" kelimelerini asla kullanma
+✓ Soru ile bitir`
+  },
+  kazanc: {
+    title: 'One More Kazanç Planı — Özet',
+    sub: 'Güncel 8 kazanç kanalı',
+    body: `KARİYER SİSTEMİ:
+Guest → Starter → Builder → Bronze → Silver → Gold
+→ Platinum → Pearl → Sapphire → Ruby → Emerald
+→ Diamond → D.Diamond → T.Diamond → I.Diamond
+→ I.Blue Diamond → I.Black Diamond → Royal Diamond
+
+8 KAZANÇ KANALI:
+
+1. FAST START BONUS
+   100 QV → $25 | 300 QV → $75 | 650 QV → $162.50 | 1000 QV → $250
+
+2. 3D BONUS
+   Aktif ayda 3 kayıt + 600 QV → +$100
+
+3. 4X4 BONUS
+   Aktif ayda 4 kayıt + 1000 QV → +$200
+
+4. TAKIM BONUSU
+   Haftalık kısa hat dengesi | Max $20.000/hafta
+
+5. EŞLEŞME BONUSU
+   Alt ekibinin bonusundan % komisyon
+
+6. NAKİT KARİYER BONUSU
+   Her kariyer geçişinde tek seferlik ödül
+
+7. ARAÇ BONUSU
+   3 ay 10.000+ QV → aylık $400-$1000
+
+8. MARKET SALES
+   Ürün satışından direkt kazanç`
+  },
+  urun: {
+    title: 'One More Güncel Ürün Rehberi',
+    sub: 'Kime, hangi ürün? Tam portföy',
+    body: `ONE MORE GÜNCEL ÜRÜN PORTFÖYÜ (30+ ürün)
+
+━━ BANT ÜRÜNLER ━━
+🩹 Painless Night Glu / Night Glu Plus+ — Ağrı, stres
+⚡ B12 Plus — Yorgunluk, vitamin eksikliği
+🔥 Slim Style — Kilo, metabolizma
+😴 Melatonin Plus — Uyku problemi
+💊 Omevia — Genel sağlık, bağışıklık
+💫 Dekamin — Genel takviye
+🌙 Night Ladies / Night Gentlemen — Yetişkinler
+
+━━ GÜZELLIK & CİLT ━━
+✨ Lumiere Beauty Set | Collagen Patch
+🎭 Anti-Aging Mask | Face Lifting Mask
+☀️ Lumiere Sunscreen
+
+━━ ORAL BAKIM ━━
+🦷 Omiprodent Toothpaste & Set
+
+━━ KAHVE ━━
+☕ Omicoff Classic / Mocha / Latte (250gr)
+Açılış: "Kahveni içerken sağlığına da katkı sağlasan?"
+
+━━ BESLENME ━━
+🍫 Fit&More Shake (Chocolate/Vanilla)
+💪 Glutamore | 🌿 Herbal Tea
+
+━━ TEMİZLİK & BAKIM ━━
+🧹 Omiclean Wipes / Powder
+💆 Hair Repair Shampoo / Mask / Shower Gel
+
+━━ EVCİL HAYVAN ━━
+🐾 Pawsy Nano Spray / Towel / Wipes
+Açılış: "Evcil dostunuz var mı? One More onlar için de düşündü!"
+
+SATIŞ STRATEJİSİ:
+1. Sorunu dinle → 2. Ürünü eşleştir
+3. Deneyimini paylaş → 4. İş fırsatını sun`
+  },
+  kariyer: {
+    title: 'One More Kariyer Basamakları',
+    sub: "Guest'ten Royal Diamond'a — 18 seviye",
+    body: `ONE MORE GÜNCEL KARİYER SİSTEMİ
+
+BAŞLANGIÇ:
+🔵 GUEST → ⭐ STARTER → 🏗️ BUILDER
+🥉 BRONZE → 🥈 SILVER → 🥇 GOLD
+
+ORTA SEVİYE:
+💎 PLATINUM → 🔮 PEARL → 💠 SAPPHIRE
+❤️ RUBY → 💚 EMERALD → ♦️ DIAMOND
+
+ZİRVE:
+D.DIAMOND → T.DIAMOND → I.DIAMOND
+I.BLUE DIAMOND → I.BLACK DIAMOND
+👑 ROYAL DIAMOND
+
+GUEST'TEN STARTER'A GEÇİŞ:
+✓ Sağ ve sol hattına birer aktif kayıt al
+✓ Aktifliğini koru
+✓ Fast Start Bonus kazan
+
+BU YIL GOLD HEDEFİ:
+Ay 1: Guest → Starter (2 kayıt)
+Ay 2-3: Starter → Builder → Bronze
+Ay 4-5: Bronze → Silver
+Ay 5-6: Silver → Gold
+Gold'da: Fast Start + Takım + Eşleşme bonusları aktif!`
+  },
+};
+
+
+function showRehber(key) {
+  const r = REHBER[key];
+  document.getElementById('strat-title').textContent = r.title;
+  document.getElementById('strat-sub').textContent = r.sub;
+  document.getElementById('strat-body').textContent = r.body;
+  document.getElementById('strat-modal').classList.add('on');
+}
+
+function copyStrat() {
+  navigator.clipboard.writeText(document.getElementById('strat-body').textContent)
+    .then(() => alert('Kopyalandı!'));
+}
+
+
+// ===================== MOD SWITCHER =====================
+let currentMod = 'yeni';
+function setMod(mod) {
+  currentMod = mod;
+  ['yeni','cevap','urun'].forEach(m => {
+    document.getElementById('mod-'+m).classList.toggle('on', mod === m);
+    const el = document.getElementById('form-'+m);
+    if (el) el.style.display = mod === m ? 'block' : 'none';
+  });
+  document.getElementById('msg-result').style.display = 'none';
+  if (mod !== 'urun') document.getElementById('urun-result').style.display = 'none';
+}
+
+// ===================== GELEN MESAJA CEVAP =====================
+const SENARYO_LABELS = {
+  ilk_cevap:               'İlk cevap — sohbeti sürdür',
+  merak:                   'Merak etti, soru soruyor',
+  dusuneyim:               'Düşüneyim diyor',
+  itiraz_piramit:          'İtiraz: Piramit/MLM şüphesi',
+  itiraz_olumsuz_yorum:    'İtiraz: Olumsuz yorum gördüm',
+  itiraz_inandirici_degil: 'İtiraz: İnandırıcı gelmiyor',
+  itiraz_urun_isler_mi:    'İtiraz: Ürünler işe yarıyor mu?',
+  itiraz_cevremde_sonuc_yok: 'İtiraz: Çevremde sonuç almadı',
+  itiraz_urun_pahali:      'İtiraz: Ürün çok pahalı',
+  itiraz_para:             'İtiraz: Param yok',
+  itiraz_vakit:            'İtiraz: Vaktim yok',
+  itiraz_ilgi:             'İtiraz: İlgimi çekmiyor',
+  itiraz_deneyim_yok:      'İtiraz: Deneyimim yok',
+  itiraz_utanma_cevre:     'İtiraz: Çevreme nasıl anlatırım',
+  itiraz_zaten_is_var:     'İtiraz: Zaten işim var',
+  itiraz_ailem_izin_vermez:'İtiraz: Ailem izin vermiyor',
+  itiraz_daha_once_denedim:'İtiraz: Daha önce NM denedim',
+  itiraz_saglik_sorunu:    'İtiraz: Sağlık sorunum var',
+  itiraz_yasim_uygun_mu:   'İtiraz: Yaşım uygun mu?',
+  itiraz_teknolojiyi_bilmiyorum: 'İtiraz: Teknolojiyi bilmiyorum',
+  randevu_ertele:          'Randevuyu erteliyor',
+  randevu_gelmedi:         'Randevuya gelmedi',
+  ekip_motivasyon:         'Ekip: Motivasyon kaybı',
+  ekip_soru:               'Ekip: Soru soruyor',
+  ekip_itiraz:             'Ekip: Bu iş olmaz diyor',
+  ekip_hedef_yok:          'Ekip: Hedef yok',
+  lider_iletisim:          'Lider ile iletişim',
+};
+
+const CEVAP_TEMPLATES = {
+
+  // ============ İLK TEMAS & SOHBET ============
+  ilk_cevap: {
+    sicak:       (n,g,b) => `${n}, mesajını gördüm ve çok memnun oldum 😊 ${b?b.slice(0,40)+'... ':''} Seninle bu konuyu biraz daha konuşmak isterim — bu hafta 20 dakikan olur mu?`,
+    empatik:     (n,g,b) => `${n}, paylaşman çok güzel 🙏 Tam olarak anlıyorum. Bir tanışıp daha iyi anlatayım — uygun bir vakit var mı?`,
+    profesyonel: (n,g,b) => `Merhaba ${n}, geri dönüşün için teşekkürler. Seninle daha detaylı konuşmak istiyorum — haftaya kısa bir görüşme ayarlayabilir miyiz?`,
+    motive:      (n,g,b) => `${n}! Harika, tam aradığım enerji 💪 Seninle kesinlikle konuşmamız lazım — ne zaman müsaitsin?`,
+    kisa:        (n,g,b) => `${n}, bu hafta 20 dakikan var mı? Görmeni çok istediğim bir şey var.`,
+  },
+
+  merak: {
+    sicak:       (n,g,b) => `${n}, çok güzel soru 😊 Kısaca söyleyeyim: One More International, medikal bantlar ve sağlık ürünleri satan Türkiye kökenli global bir şirket. Hem sağlığını destekleyebilir, hem de istersen ek gelir kazanabilirsin. Ama en iyisi 20 dakikada her şeyi ayrıntılı anlatmak — bu hafta müsait misin?`,
+    profesyonel: (n,g,b) => `${n}, güzel soru. One More International, 2014'ten beri Doğrudan Satış Yetki Belgeli, 120'den fazla ülkede aktif bir şirket. Medikal bantlar ve sağlık ürünleri üretiyor. Detayları bire bir görüşmede aktarmak çok daha verimli olur — ne zaman uygun olursunuz?`,
+    empatik:     (n,g,b) => `${n}, merak etmen çok güzel 🙏 Sana açık ve şeffaf anlatayım — hem ürünleri hem iş modelini. 20 dakikan var mı?`,
+    kisa:        (n,g,b) => `${n}, 20 dakikada her şeyi anlatabilirim. Bu hafta müsait misin?`,
+  },
+
+  dusuneyim: {
+    sicak:       (n,g,b) => `${n}, tabii ki düşün 😊 Acele ettirmek istemiyorum. Ama şunu sormak istiyorum: aklında en çok takılan şey ne? O soruya cevap verirsem karar vermen kolaylaşır.`,
+    empatik:     (n,g,b) => `${n}, "düşüneyim" dediğinde genellikle cevaplanmamış bir soru var içinde 🙏 Bana söylersen birlikte bakalım. Ne takıldı aklına?`,
+    profesyonel: (n,g,b) => `${n}, anlıyorum. Doğru karar için zaman ayırmak önemli. Düşünce sürecini kolaylaştırmak adına en çok merak ettiğiniz konuyu paylaşırsanız, net bilgi verebilirim.`,
+    kisa:        (n,g,b) => `${n}, aklında takılan bir soru var mı? Cevaplayayım, sonra düşünürsün 😊`,
+  },
+
+  // ============ ŞİRKET & YASAL İTİRAZLARI ============
+  itiraz_piramit: {
+    sicak:       (n,g,b) => `${n}, bu soruyu sorman çok doğru — ben de başta aynı şeyi düşündüm 😊 Sana net söyleyeyim: piramit sistemlerde gerçek ürün olmaz, para sadece üstten alta akar ve Türkiye'de yasadışı. One More International ise Ticaret Bakanlığı onaylı, Doğrudan Satış Yetki Belgeli bir şirket — 2014'ten beri aktif, 120'den fazla ülkede faaliyet gösteriyor. Ürünleri ben bizzat kullanıyorum. Sana belgeleri de gösterebilirim. 20 dakikan var mı?`,
+    profesyonel: (n,g,b) => `${n}, çok yerinde bir soru. Piramit sistemler Türkiye'de 6502 sayılı Tüketicinin Korunması Kanunu gereği yasadışıdır ve yalnızca üye toplamaya dayanır. One More International ise Ticaret Bakanlığı onaylı Doğrudan Satış Yetki Belgeli, patent ve sertifikalı gerçek ürünlere sahip yasal bir şirket. Şirket ilkelerini ve sertifikaları paylaşabilirim — incelemek ister misiniz?`,
+    empatik:     (n,g,b) => `${n}, bu şüpheyi taşıman çok anlaşılır 😔 Çevremizde kötü örnekler var ve haklı olarak temkinli yaklaşıyorsun. Ben de 6 ay araştırdıktan sonra başladım. Fark şu: piramit sistemde ürün olmaz. Bizde Painless, B12 Plus, Slim Style gibi 30'dan fazla gerçek ürün var ve ben bunları kullanıyorum. Sana her şeyi şeffaf anlatayım — 20 dakikan var mı?`,
+    kisa:        (n,g,b) => `${n}, net söyleyeyim: One More 2014'ten beri yasal, Doğrudan Satış belgeli şirket. 30+ gerçek ürün var, ben kullanıyorum. 10 dakikada belgeleriyle anlatayım mı?`,
+  },
+
+  itiraz_olumsuz_yorum: {
+    sicak:       (n,g,b) => `${n}, araştırman çok doğru 😊 İnternette her şirkete iyi veya kötü yorum yazılabilir — bu hepimizin bildiği bir gerçek. Ama şunu sormak istiyorum: o yorumları yazan kişiler ürünü gerçekten kullandı mı, yoksa "duydum" diye mi yazdı? Ben sana hem şirketin resmi belgelerini hem de kendi deneyimimi gösterebilirim. Karar vermeden önce 20 dakika konuşalım mı?`,
+    profesyonel: (n,g,b) => `${n}, araştırmanız çok yerinde. İnternette her şirket hakkında olumlu ve olumsuz yorumlar bulunabilir. One More International 2014'ten beri Doğrudan Satış Yetki Belgesi ile faaliyet gösteriyor ve Business for Home platformunda AAA+ notu almış. Olumsuz yorumların büyük bölümü ürünü yanlış kullanan veya beklentisini yanlış kuran kişilerden geliyor. Resmi belgeleri paylaşabilir, sorularınızı bire bir yanıtlayabilirim.`,
+    empatik:     (n,g,b) => `${n}, araştırman çok mantıklı 🙏 Ben de başlamadan önce çok şey okudum — bazı yorumlar beni de durdurmuştu. Ama fark ettim ki olumsuz yorum yazanların çoğu ya ürünü hiç kullanmamış ya yanlış beklentiyle başlamış ya da sistemi tam anlamamış. Benim deneyimim çok farklı. Sana şeffaf anlatabilirim — bu adil değil mi? 😊`,
+    kisa:        (n,g,b) => `${n}, araştırman doğru 😊 Her şirkete olumsuz yorum yazılır. Önemli olan belgeler ve kişisel deneyim. 15 dakikada resmi belgelerle anlatalım mı?`,
+  },
+
+  itiraz_inandirici_degil: {
+    sicak: (n,g,b) => {
+      const konu = g && /kazanc|kazan|para|sistem|gelir/.test(g.toLowerCase().replace(/[ğüşıöç]/g,(c)=>({ğ:'g',ü:'u',ş:'s',ı:'i',ö:'o',ç:'c'}[c]||c))) ? 'kazanç sistemi' : 'bu konu';
+      return `${n}, anlıyorum — ${konu} ilk duyunca gerçekten abartı gibi gelebiliyor 😊 Ben de başta aynı şeyi düşündüm. Ama şunu sormak istiyorum: "abartı" derken tam olarak neyi kastediyorsun? Çok fazla para mı, yoksa hiç kazanılmadığını mı düşünüyorsun? Çünkü ikisi çok farklı. Gerçekçi rakamları ve nasıl çalıştığını anlatayım — 20 dakikan var mı?`;
+    },
+    empatik:     (n,g,b) => `${n}, dürüstlüğün için teşekkürler 🙏 "Abartı" veya "inandırıcı gelmiyor" demen çok anlaşılır — çünkü internette gerçekten abartılı vaatler yapan sistemler var. Ben kimseye "bir ayda zengin ol" demiyorum. Fast Start Bonus ile ilk kayıttan anında kazanç başlıyor ve ekip büyüdükçe büyüyor. Sana gerçek rakamları göstereyim — ne görsen inandırıcı gelir?`,
+    profesyonel: (n,g,b) => `${n}, şüphecilik sağlıklı bir yaklaşım. One More'un 8 kazanç kanalı var: Fast Start Bonus, 3D, 4X4, Takım, Eşleşme, Kariyer, Araç Bonusu ve Market Sales. Her biri belirli koşullara bağlı — "otur kazan" değil, sistematik çalışanların gerçek kazanımları var. Somut örnekler ve belgeler gösterebilirim.`,
+    kisa:        (n,g,b) => `${n}, haklı soru 😊 "Abartı" derken tam olarak neyi kastediyorsun? Rakamları gerçekçi şekilde anlatalım.`,
+  },
+
+  itiraz_urun_isler_mi: {
+    sicak:       (n,g,b) => `${n}, çok haklı bir soru — ben de bunu sordurdum başta 😊 Dürüstçe söyleyeyim: ürünler herkes için mucize yaratmıyor. Ama benim deneyimim şu: Painless bandını ilk kullandığımda fark ettim. Çevremde de benzer sonuçlar gördüm. Önemli olan doğru ürünü doğru sorun için kullanmak. Sana deneme fırsatı sunabilirim — kendin gör. Ne dersin?`,
+    profesyonel: (n,g,b) => `${n}, sağlıklı bir soru. One More ürünleri Güney Kore'de Transdermal Dalga Teknolojisi (TTS) ile üretilen, Türkiye'de serbest satış sertifikası olan medikal bantlardır. Sonuçlar kişiye göre farklılık gösterebilir — bu tüm takviye ürünleri için geçerlidir. Küçük bir deneme paketiyle başlamanızı öneririm. Kendi deneyiminizle karar verebilirsiniz.`,
+    empatik:     (n,g,b) => `${n}, bu şüpheyi taşıman çok anlaşılır 🙏 "İşe yarıyor mu?" en dürüst sorudur. Sana şunu söyleyeyim: ben de önce şüpheyle denedim. Sonucu kendim gördüm. Ama herkese "mutlaka işe yarar" demek doğru olmaz — kişiye göre farklılık gösterebilir. Bu yüzden önce küçük bir paketle dene, sonra karar ver. En adil yol bu değil mi?`,
+    kisa:        (n,g,b) => `${n}, ben denedim ve gördüm 😊 En iyisi kendin dene — küçük paketle başlayalım mı?`,
+  },
+
+  itiraz_cevremde_sonuc_yok: {
+    sicak:       (n,g,b) => `${n}, bunu duyunca anlıyorum neden şüphe ettiğini 😊 Ama şunu sormak istiyorum: o kişi ürünü nasıl kullandı, hangi ürünü denedi, ne kadar süre kullandı? Çünkü yanlış ürünü yanlış sorun için kullananların sonuç alamaması çok normal. Mesela B12 Plus'ı sırt ağrısı için kullananlar elbette sonuç almaz — o iş Painless'ın işi. Doğru eşleştirme çok önemli. Seninle birlikte doğru ürünü belirlesek nasıl olur?`,
+    profesyonel: (n,g,b) => `${n}, bu önemli bir geri bildirim. Çevrenizdeki kişinin sonuç alamamasının nedenleri: yanlış ürün seçimi, yetersiz kullanım süresi veya beklenti uyumsuzluğu olabilir. One More ürünleri ilaç değil, destekleyici takviye — bu farkı net anlatmak gerekiyor. Doğru ürünü doğru soruna eşleştirdiğimizde sonuçlar çok farklı oluyor. Sizi bilgilendireyim mi?`,
+    empatik:     (n,g,b) => `${n}, bu çok dürüst bir geri bildirim 🙏 Çevrende sonuç almayan birini görmek güveni sarsar. Ama fark ettim ki en sık yapılan hata yanlış ürün seçimi. Hangi ürünü denedi, ne için kullandı? Doğru eşleştirme yapılmadan sonuç beklemek zor. Seninle birlikte doğru ürünü belirleyelim mi?`,
+    kisa:        (n,g,b) => `${n}, hangi ürünü denedi, ne için? Yanlış eşleştirme olmuş olabilir. Doğru ürünü birlikte belirleyelim mi? 😊`,
+  },
+
+  // ============ KİŞİSEL İTİRAZLAR ============
+  itiraz_para: {
+    sicak:       (n,g,b) => `${n}, anlıyorum — ben de başta aynı düşündüm 😊 Ama şunu söyleyeyim: One More'a para koymak için değil, para kazanmak için geliyorsun. En küçük paket 100 QV ve o günden itibaren Fast Start Bonus kazanmaya başlıyorsun. Birlikte en uygun başlangıcı düşünelim mi?`,
+    profesyonel: (n,g,b) => `${n}, bütçe konusundaki endişenizi anlıyorum. One More'da 100 QV'den başlayan farklı giriş seçenekleri mevcut. Sisteme giriş bedelini ilk birkaç kayıtta geri kazanmak mümkün — Fast Start Bonus tam bu yüzden var. Seçenekleri birlikte değerlendirelim mi?`,
+    empatik:     (n,g,b) => `${n}, bu endişeni çok iyi anlıyorum 🙏 Para meselesini dile getirmek cesaret ister. Şunu sormak istiyorum: eğer bu engel olmasaydı, ilgilenir miydin? Çünkü o zaman birlikte bir çözüm bulabiliriz.`,
+    kisa:        (n,g,b) => `${n}, en küçük başlangıç seçeneğini göstereyim mi? İlk kayıttan anında Fast Start Bonus geliyor 😊`,
+  },
+
+  itiraz_vakit: {
+    sicak:       (n,g,b) => `${n}, vaktin olmadığını anlıyorum 😊 Ama şunu söyleyeyim: bu işi yapanların çoğu tam zamanlı çalışırken yapıyor. Haftada birkaç saatlik çabayla başlayıp zamanla büyüyenler var. Asıl soru şu: eğer bu iş sana zaman özgürlüğü kazandıracaksa, başlangıçta biraz vakit ayırmaya değer mi?`,
+    empatik:     (n,g,b) => `${n}, "vaktim yok" diyenlerin çoğu tam da bu işe en çok ihtiyaç duyan kişiler 😊 Çünkü zaman özgürlüğü istiyorlar. Haftada kaç saat ayırabilirsin? Ona göre gerçekçi bir plan çıkaralım.`,
+    profesyonel: (n,g,b) => `${n}, zaman kısıtını anlıyorum. One More'da haftada 5-10 saatle başlayıp büyüyenler var. Kariyer hedefin ne kadar zaman ayıracağını belirliyor. Seninle gerçekçi bir zaman planı çıkarabilir miyiz?`,
+    kisa:        (n,g,b) => `${n}, haftada kaç saat ayırabilirsin? Ona göre gerçekçi bir plan çıkaralım.`,
+  },
+
+  itiraz_ilgi: {
+    sicak:       (n,g,b) => `${n}, tamamen anlıyorum 😊 Herkes için değil tabii. Ama şunu merak ettim: bu tür işlerin ilgini çekmemesinin sebebi genel olarak mı, yoksa daha önce kötü bir deneyim mi yaşadın? Bazen sadece doğru şirket ve doğru yaklaşım eksik oluyor.`,
+    empatik:     (n,g,b) => `${n}, zorlamak istemiyorum 🙏 Ama şu soruyu sormak istiyorum: sağlıklı yaşam veya ek gelir konusu seni hiç mi ilgilendirmiyor, yoksa bu tür iş modelleri mi? İkisi çok farklı şeyler — anlamak istiyorum sadece.`,
+    kisa:        (n,g,b) => `${n}, tamam, zorlamayacağım 😊 Kapı her zaman açık — fikrin değişirse buradayım.`,
+  },
+
+  itiraz_deneyim_yok: {
+    sicak:       (n,g,b) => `${n}, çok anlıyorum — ben de başlarken hiç deneyimim yoktu 😊 Ama One More'da sıfırdan başlamak bir avantaj bile. Çünkü yanlış alışkanlık taşımıyorsun. Adım adım, yanında benim destek sistemiyle büyüyebilirsin. Başlamak için tek ihtiyacın: istek. Var mı? 😊`,
+    empatik:     (n,g,b) => `${n}, "deneyimim yok" demek en sık duyduğum şey 🙏 Ve şunu söyleyeyim: bu işte deneyim değil, tutum belirleyici. Ben de sıfırdan başladım. Sistemimiz seni adım adım yetiştirir. Seninle başlangıçtan gitmek isterim.`,
+    profesyonel: (n,g,b) => `${n}, deneyim endişenizi anlıyorum. One More'da yeni başlayanlar için kapsamlı bir eğitim ve destek sistemi mevcut. Kariyer basamakları da bunu göz önüne alarak tasarlanmış — Guest'ten başlayıp aşama aşama gelişiyorsunuz. Deneyim değil, sistematik çalışma belirleyici.`,
+    kisa:        (n,g,b) => `${n}, ben de sıfırdan başladım 😊 Deneyim değil, istek belirleyici. Seninle adım adım giderim.`,
+  },
+
+  itiraz_utanma_cevre: {
+    sicak:       (n,g,b) => `${n}, bu hisi çok iyi anlıyorum — ben de başta "çevrem ne der?" diye düşündüm 😊 Ama şunu fark ettim: çevren seni ürünleri kullandıktan sonra değiştiğini görünce zaten soruları kendisi soruyor. Önce kendi deneyimini yaşa — sonra paylaşmak çok daha doğal oluyor.`,
+    empatik:     (n,g,b) => `${n}, bu çok dürüst bir his 🙏 "Çevrem ne düşünür?" kaygısı çok anlaşılır. Ama şunu sormak istiyorum: kendi sağlığın ve geliriniz için doğru şeyi yapmak, başkalarının düşüncesinden daha önemli değil mi? Çevren zamanla görüp anlayacak.`,
+    kisa:        (n,g,b) => `${n}, önce kendin dene, kendin gör 😊 Çevren değiştiğini görünce soruları kendisi sorar.`,
+  },
+
+  itiraz_zaten_is_var: {
+    sicak:       (n,g,b) => `${n}, bu çok güzel bir şey — işin var 😊 One More tam da işi olanlar için tasarlanmış. Mevcut işinden vazgeçmeni kimse beklemiyor. Haftada birkaç saatle ek gelir kaynağı oluşturuyorsun. Zamanla büyüdükçe seçim hakkın doğuyor. Şu an ne kadar ek gelir, seni rahatlatır?`,
+    empatik:     (n,g,b) => `${n}, anlıyorum 🙏 "Zaten işim var" diyenler aslında en iyi adaylar — çünkü para için değil, özgürlük için çalışıyorlar. One More işine ek olarak, paralel bir gelir kolu. Haftada 5-10 saat ayırabilirsen başlamak için yeterli.`,
+    kisa:        (n,g,b) => `${n}, One More işine ek olarak yapılır 😊 Haftada birkaç saat yeterli. Ek gelir seni rahatlatmaz mı?`,
+  },
+
+  itiraz_ailem_izin_vermez: {
+    sicak:       (n,g,b) => `${n}, bunu anlayabiliyorum 😊 Peki aileni en çok ne endişelendiriyor? Para riski mi, zaman mı, yoksa "network işi" diye önyargı mı? Çünkü her birine çok farklı cevaplar var. Ailenle birlikte bir sunum yapmama ne dersin?`,
+    empatik:     (n,g,b) => `${n}, ailenin düşüncesi önemli 🙏 Ama şunu da düşün: karar sonunda senin. Ailenin endişesi genellikle "dolandırılır mısın?" korkusundan geliyor. Onlara resmi belgeler ve şirket bilgisini göstersen, bakış açıları değişebilir. Bunu birlikte yapalım mı?`,
+    kisa:        (n,g,b) => `${n}, ailenin en büyük endişesi ne? Ona göre cevap verelim 😊`,
+  },
+
+  itiraz_daha_once_denedim: {
+    sicak:       (n,g,b) => `${n}, bunu duyunca anlıyorum — kötü bir deneyim geçirmek gerçekten yıpratıcı 😔 Hangi şirketti, ne oldu? Çünkü her NM şirketi aynı değil. One More'un farkını konuşabiliriz — ama önce senin deneyimini anlamak istiyorum.`,
+    empatik:     (n,g,b) => `${n}, bu çok dürüst bir paylaşım 🙏 Önceki deneyim çok belirleyici. Ama şunu sormak istiyorum: o deneyimde ne eksikti — şirket mi, destek mi, ürün mü, yoksa sistem mi? Çünkü One More'da bunların her biri farklı işliyor. Konuşalım mı?`,
+    profesyonel: (n,g,b) => `${n}, önceki deneyiminizi anlıyorum. Her doğrudan satış şirketi aynı değil — ürün kalitesi, destek sistemi, kazanç yapısı çok farklı olabiliyor. One More'un size sunduklarını karşılaştıralım mı?`,
+    kisa:        (n,g,b) => `${n}, o deneyimde ne eksikti? One More'u farklı kılan şeyleri konuşalım 😊`,
+  },
+
+  itiraz_urun_pahali: {
+    sicak:       (n,g,b) => `${n}, anlıyorum — ilk bakışta pahalı gelebilir 😊 Ama şöyle düşün: bu ürünleri ayda ne kadar ağrı kesici, vitamin veya güzellik ürünü alarak harcıyorsun? Çoğu kişi karşılaştırdığında One More'un aslında daha ekonomik olduğunu fark ediyor. Bir de bakış açısını değiştir: sen bu ürünü almak zorunda değilsin — sen bu ürünü satabilirsin.`,
+    empatik:     (n,g,b) => `${n}, fiyat konusundaki hassasiyetini anlıyorum 🙏 Ama şunu sormak istiyorum: aylık eczane harcaman ne kadar? Çünkü çoğu zaman One More ürünleri alternatiflerle karşılaştırıldığında çok daha makul çıkıyor. Küçük bir paket için konuşalım mı?`,
+    kisa:        (n,g,b) => `${n}, aylık eczane harcamanla karşılaştıralım mı? 😊 Çoğu zaman One More daha ekonomik çıkıyor.`,
+  },
+
+  itiraz_saglik_sorunu: {
+    sicak:       (n,g,b) => `${n}, anlıyorum — öncelikle geçmiş olsun 🙏 One More ürünleri ilaç değil, destekleyici takviye. Ama şunu söyleyeyim: kronik rahatsızlığı olan pek çok kişi Painless veya B12 Plus'ı doktor kontrolünde kullanıyor ve rahatladığını söylüyor. Doktoruna danışmak kaydıyla deneme fırsatı sunabilirim. Ne düşünürsün?`,
+    empatik:     (n,g,b) => `${n}, sağlığın her şeyden önce gelir 🙏 One More ürünleri yardımcı takviye — ilaç tedavisinin yerini tutmaz, ama yanında destek olabilir. Doktoruna danışarak başlamak her zaman en doğrusu. Seninle bir bilgilendirme yapayım mı?`,
+    kisa:        (n,g,b) => `${n}, geçmiş olsun 🙏 One More destekleyici takviye — doktoruna danışarak deneme fırsatı sunabilirim.`,
+  },
+
+  itiraz_yasim_uygun_mu: {
+    sicak:       (n,g,b) => `${n}, bu işte yaş hiç sınır değil 😊 Ekibimizde 20'li yaşlarda yeni başlayanlar da var, 50'li yaşlarda en aktif liderler de. Önemli olan niyet ve enerji. Sen hangisinden eksik değilsin ki?`,
+    empatik:     (n,g,b) => `${n}, yaş konusundaki endişeni anlıyorum 🙏 Ama biliyor musun, bu işte en başarılı olanlar genellikle "ben mi yapabilirim?" diye soranlar. Çünkü alçakgönüllülük öğrenmeyi kolaylaştırıyor. Seninle başlamak isterim.`,
+    kisa:        (n,g,b) => `${n}, bu işte yaş sınırı yok 😊 20'de de 50'de de olur. Önemli olan niyet.`,
+  },
+
+  itiraz_teknolojiyi_bilmiyorum: {
+    sicak:       (n,g,b) => `${n}, bu çok anlıyorum 😊 Ben de başlarken sosyal medyayı çok az kullanıyordum. Ama One More'da teknoloji zorunluluk değil — yüz yüze, telefon, WhatsApp ile başlayanlar çok başarılı. Adım adım öğreniriz.`,
+    empatik:     (n,g,b) => `${n}, teknoloji korkusu çok yaygın ve çok anlaşılır 🙏 Ama iyi haber: bu işte en güçlü araç senin samimiyetin — teknoloji değil. WhatsApp'tan mesaj atabiliyorsan, başlamak için yeterli.`,
+    kisa:        (n,g,b) => `${n}, WhatsApp kullanabiliyorsan yeterli 😊 Geri kalanını birlikte öğreniriz.`,
+  },
+
+  // ============ RANDEVU SENARYOLARI ============
+  randevu_ertele: {
+    sicak:       (n,g,b) => `${n}, sorun değil 😊 Hayat bazen beklenmedik şeyler getiriyor. Bu hafta sonu veya gelecek hafta sana uygun bir vakit olur mu? Esnek davranabilirim.`,
+    profesyonel: (n,g,b) => `${n}, tabii anlıyorum. Size uygun 2-3 farklı tarih önerir misiniz? Ona göre ayarlayayım.`,
+    kisa:        (n,g,b) => `${n}, tamam 😊 Sana uygun 2-3 tarih yazar mısın?`,
+  },
+
+  randevu_gelmedi: {
+    sicak:       (n,g,b) => `Merhaba ${n}! Merak ettim, her şey yolunda mı? 😊 Umarım bir şey olmamıştır — eğer uygun bir vakit oluşursa tekrar buluşabiliriz.`,
+    empatik:     (n,g,b) => `${n}, merhaba! Bazen hayat önümüze çıkıyor, anlıyorum 🙏 Her şey yolundaysa, yeni bir vakit ayarlayabilir miyiz? Karar senin.`,
+    kisa:        (n,g,b) => `${n}, merhaba! Her şey yolunda mı? Yeni bir vakit ayarlayabilir miyiz? 😊`,
+  },
+
+  // ============ EKİP SENARYOLARI ============
+  ekip_motivasyon: {
+    motive:      (n,g,b) => `${n}! Dur bir dakika 💪 Bu his geçici — her başarılı One More temsilcisi bu noktadan geçti. Ama bırakanlar değil, devam edenler kazandı. Seninle konuşmam lazım. Bugün 15 dakikan var mı? Birlikte nerede takıldığını bulalım.`,
+    empatik:     (n,g,b) => `${n}, paylaştığın için teşekkürler 🙏 Bu hissi çok iyi anlıyorum — ben de yaşadım. Ama şunu biliyorum: genellikle küçük bir şeyi değiştirmek büyük fark yaratıyor. Ne yaşandığını anlatır mısın, birlikte bakalım?`,
+    sicak:       (n,g,b) => `${n}, seni duyuyorum 😊 Zor günler oluyor ama bu günler de geçiyor. Hadi bir konuşalım — bugün müsait misin?`,
+  },
+
+  ekip_soru: {
+    profesyonel: (n,g,b) => `${n}, güzel soru! ${b?b.slice(0,60)+'... ':''}Bunu seninle detaylı konuşmak istiyorum — bir görüşme ayarlayalım mı?`,
+    sicak:       (n,g,b) => `${n}, çok güzel soru 😊 ${b||'Bunu sana adım adım göstereyim'} — video görüşmede daha iyi anlatırım. Ne dersin?`,
+    kisa:        (n,g,b) => `${n}, ${b||'şöyle'} 😊 Adım adım göstereyim — bugün müsait misin?`,
+  },
+
+  ekip_itiraz: {
+    motive:      (n,g,b) => `${n}, dur bir saniye 💪 "Olmaz" diyenlerin çoğu tam bu noktada bıraktı — ama devam edenler ne fark yarattı biliyor musun? Seninle konuşmam lazım. Bugün 15 dakikan var mı? Tam olarak nerede takıldığını birlikte bulalım.`,
+    empatik:     (n,g,b) => `${n}, bu hissi anlıyorum 🙏 Bazen sonuç gelmeyince "bu iş olmaz" gibi geliyor. Ama şunu birlikte bakalım: tam olarak neyin çalışmadığını anlarsak, çözüm bulabiliriz. Anlat bana — ne değişti?`,
+    sicak:       (n,g,b) => `${n}, seni duyuyorum 😊 Ama bırakmadan önce birlikte bir bakalım mı? Çoğu zaman küçük bir şeyi değiştirmek büyük fark yaratıyor. Ne yaşıyorsun?`,
+  },
+
+  ekip_hedef_yok: {
+    sicak:       (n,g,b) => `${n}, hedefin yoksa yön bulmak zor 😊 Ama şunu sorayım: One More'dan ne istiyorsun? Ek gelir mi, zaman özgürlüğü mü, kariyer mi? Bir hedef koyalım ve geriye doğru planlayalım.`,
+    motive:      (n,g,b) => `${n}! Hedef olmadan motor çalışmaz 💪 Hadi şu soruyu cevapla: 6 ay sonra ne farklı olmasını istersin? Oradan başlayalım.`,
+    kisa:        (n,g,b) => `${n}, 6 ay sonra ne farklı olsun istiyorsun? Oradan başlayalım 😊`,
+  },
+
+  lider_iletisim: {
+    profesyonel: (n,g,b) => `Merhaba ${n}! ${b?b+' ':''}Seninle paylaşmak istediğim güncellemeler var. Uygun bir zamanda konuşabilir miyiz?`,
+    sicak:       (n,g,b) => `${n}! 😊 ${b?b+' ':''}Seninle birkaç şeyi konuşmak istiyorum — bu hafta müsait misin?`,
+    kisa:        (n,g,b) => `${n}, merhaba! ${b||'Güncellemeler var'} — ne zaman konuşabiliriz?`,
+  },
+};
+
+
+function detectSenaryo(mesaj) {
+  const m = mesaj.toLowerCase()
+    .replace(/[?!.,;:'"()]/g,' ')
+    .replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s')
+    .replace(/ı/g,'i').replace(/ö/g,'o').replace(/ç/g,'c')
+    .replace(/\s+/g,' ').trim();
+
+  // 1. Piramit / yasal
+  if (/piramit|mlm|ponzi|saadet zinciri|yasal mi|dolandir|sahte sistem/.test(m)) return 'itiraz_piramit';
+
+  // 2. Olumsuz yorum
+  if (/olumsuz yorum|kotu yorum|sikayet|google da|internette bak|arastirdigimda|haberlerde/.test(m)) return 'itiraz_olumsuz_yorum';
+
+  // 3. Daha önce NM denedim
+  if (/once denedim|daha once yaptim|baska sirket|farkli sirket|olmadi ciktim|basarisiz oldum|kandirildim/.test(m)) return 'itiraz_daha_once_denedim';
+
+  // 4. Aile / eş
+  if (/ailem karsi|esim istemi|kocam istemi|karim istemi|aile izin|ailem izin verm/.test(m)) return 'itiraz_ailem_izin_vermez';
+
+  // 5. Utanma
+  if (/ne der|utaniyor|nasil anlatirim|mahcup|cevre baskisi|arkadaslarim ne/.test(m)) return 'itiraz_utanma_cevre';
+
+  // 6. Teknoloji
+  if (/teknolojiyi bilmi|sosyal medyayi bilmi|instagram bilmi|uygulama bilmi/.test(m)) return 'itiraz_teknolojiyi_bilmiyorum';
+
+  // 7. Yaş
+  if (/yasim uygun mu|kac yasinda|yasli miyim|bu yas/.test(m)) return 'itiraz_yasim_uygun_mu';
+
+  // 8. Sağlık
+  if (/hasta|doktor|ilac kullan|kronik|ameliyat|tedavi goruyor|rahatsizligim/.test(m)) return 'itiraz_saglik_sorunu';
+
+  // 9. Zaten iş var
+  if (/zaten isim var|tam zamanli calisi|memurum|kadrolu/.test(m)) return 'itiraz_zaten_is_var';
+
+  // 10. Deneyim yok
+  if (/deneyimim yok|beceremi|bu isi yapamam|satis yapamam/.test(m)) return 'itiraz_deneyim_yok';
+
+  // 11. ÇEVREMDEN + KAZANÇ = inandırıcılık şüphesi
+  // "çevremden gördüğüm kadarıyla para kazandırmıyor" → inandirici_degil
+  if (/cevremden|etrafimdan|gorduklarimdan|gorduğum kadar/.test(m)) {
+    if (/para|kazan|kazandi|kazandirm|gelir/.test(m)) return 'itiraz_inandirici_degil';
+    else return 'itiraz_cevremde_sonuc_yok';
+  }
+  if (/cevremde|etrafimda/.test(m)) {
+    if (/para|kazan|gelir/.test(m)) return 'itiraz_inandirici_degil';
+    else return 'itiraz_cevremde_sonuc_yok';
+  }
+
+  // 12. Kazanç şüphesi / inandırıcılık
+  if (/para kazandirmi|kazandirmiyor|para yok bu iste|kazanilmiyor/.test(m)) return 'itiraz_inandirici_degil';
+  if (/abart|inandiric degil|inanmiyorum|suphe|emin degil/.test(m)) return 'itiraz_inandirici_degil';
+  if (/gercek mi|dogru mu|mumkun mu|mantikli degil|cok iyi gorunu/.test(m)) return 'itiraz_inandirici_degil';
+  if (/bu tarz isler|bu tur isler/.test(m) && /para|kazan/.test(m)) return 'itiraz_inandirici_degil';
+
+  // 13. Ürün pahalı
+  if (/pahali|cok para|ucuz degil|fiyat yuksek|butcem yetmez/.test(m)) return 'itiraz_urun_pahali';
+
+  // 14. Ürün işe yarıyor mu
+  if (/urun ise yariyor mu|bant ise yariyor mu|etkili mi bu|calisr mi/.test(m)) return 'itiraz_urun_isler_mi';
+
+  // 15. Çevremde ürün deneyen sonuç almadı
+  if (/kullanip sonuc alm|denedi istemedi|urun tutmadi/.test(m)) return 'itiraz_cevremde_sonuc_yok';
+
+  // 16. Para / bütçe yok
+  if (/param yok|para yok|butce yok|giris ucreti|baslama parasi/.test(m)) return 'itiraz_para';
+
+  // 17. Vakit yok
+  if (/vaktim yok|zamanim yok|mesgulyum|cok yogunum/.test(m)) return 'itiraz_vakit';
+
+  // 18. İlgi yok
+  if (/ilgimi cekmiyor|ilgilenmiyorum|tesekkurler ama hayir|istemiyorum/.test(m)) return 'itiraz_ilgi';
+
+  // 19. Satış sorusu
+  if (/satis isi mi|saticilik mi|ne is bu|nasil bir is/.test(m)) return 'merak';
+
+  // 20. Randevu erteleme
+  if (/erteleyelim|baska zaman|bu hafta olm|iptal|gelemiyorum/.test(m)) return 'randevu_ertele';
+
+  // 21. Düşüneyim
+  if (/dusuneyim|sonra bakayim|simdi degil|bir dusuneyim/.test(m)) return 'dusuneyim';
+
+  // 22. Ekip senaryoları
+  if (/hedefim yok|ne yapacagimi bilm|motivasyon bulamiy/.test(m)) return 'ekip_hedef_yok';
+  if (/birakmak istiyorum|devam edemiy|moralim bozuk|yoruldum bu isten/.test(m)) return 'ekip_motivasyon';
+  if (/bu is olmaz|calismiyor bu sistem|bosuna ugrasiyorum/.test(m)) return 'ekip_itiraz';
+  if (/nasil yapiyorsun|ogretir misin|bana goster/.test(m)) return 'ekip_soru';
+
+  // 23. Genel merak
+  if (/nasil|nedir|anlat|merak|bilgi ver|ne bu|detay|acikla/.test(m)) return 'merak';
+
+  return 'ilk_cevap';
+}
+
+
+function generateCevap(forceTon) {
+  const isim   = document.getElementById('c-isim').value.trim() || 'Kişi';
+  const tip    = document.getElementById('c-tip').value;
+  const mesaj  = document.getElementById('c-mesaj').value.trim();
+  const senaryo = document.getElementById('c-senaryo').value;
+  const ton    = forceTon || document.getElementById('c-ton').value;
+  const baglam = document.getElementById('c-baglam').value.trim();
+
+  if (!mesaj) { document.getElementById('c-mesaj').focus(); return; }
+
+  const detectedSenaryo = senaryo === 'oto' ? detectSenaryo(mesaj) : senaryo;
+
+  // Ton belirleme
+  let resolvedTon;
+  if (ton === 'oto') {
+    resolvedTon = (
+      detectedSenaryo.includes('piramit') || detectedSenaryo.includes('olumsuz') || detectedSenaryo.includes('inandirici') ? 'empatik' :
+      detectedSenaryo.includes('motivasyon') ? 'motive' :
+      detectedSenaryo.includes('lider') ? 'profesyonel' : 'sicak'
+    );
+  } else {
+    resolvedTon = ton;
+  }
+
+  const templates = CEVAP_TEMPLATES[detectedSenaryo];
+  if (!templates) {
+    document.getElementById('msg-text').textContent = `${isim}, seninle bu konuyu daha iyi konuşmak isterim — bu hafta 20 dakikan olur mu? 😊`;
+    document.getElementById('msg-label').textContent = 'Genel cevap';
+    document.getElementById('msg-result').style.display = 'block';
+    return;
+  }
+
+  // Mevcut tona bak, yoksa diğerlerinden birini seç
+  let fn = templates[resolvedTon];
+  if (!fn) {
+    const availableTons = Object.keys(templates);
+    fn = templates[availableTons[0]];
+    resolvedTon = availableTons[0];
+  }
+
+  const result = fn(isim, mesaj, baglam);
+  lastMsg = result;
+  lastMsgContext = { isim, kanal: tip, iliski: 'bilinmiyor', hedef: detectedSenaryo, bilgi: baglam };
+
+  // Kullanılan ton ve senaryo kaydet (yeniden üret için)
+  window._lastCevapState = { isim, mesaj, baglam, detectedSenaryo, usedTon: resolvedTon };
+
+  const senaryoLabel = SENARYO_LABELS[detectedSenaryo] || detectedSenaryo;
+  document.getElementById('msg-label').innerHTML =
+    `<span class="senaryo-badge"><i class="ti ti-tag"></i>${senaryoLabel}</span>`;
+  document.getElementById('msg-text').textContent = result;
+  document.getElementById('msg-result').style.display = 'block';
+  document.getElementById('msg-result').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+
+function regenCurrent() {
+  if (currentMod === 'yeni') {
+    regenerateMsg();
+  } else if (currentMod === 'cevap') {
+    // Her yeniden üretmede farklı ton seç
+    const tonlar = ['sicak', 'empatik', 'profesyonel', 'kisa', 'motive'];
+    const state = window._lastCevapState;
+    if (!state) { generateCevap(); return; }
+
+    const templates = CEVAP_TEMPLATES[state.detectedSenaryo];
+    if (!templates) { generateCevap(); return; }
+
+    const mevcutTon = state.usedTon;
+    const uygunTonlar = tonlar.filter(t => templates[t] && t !== mevcutTon);
+
+    if (uygunTonlar.length === 0) { generateCevap(); return; }
+
+    // Sıradaki tonu seç
+    const yeniTon = uygunTonlar[Math.floor(Math.random() * uygunTonlar.length)];
+    generateCevap(yeniTon);
+  } else if (currentMod === 'urun') {
+    generateUrun();
+  }
+}
+
+
+// ===================== ÜRÜN VERİTABANI =====================
+const URUNLER = {
+  painless: {
+    isim: 'Painless Night Glu / Plus+',
+    emoji: '🩹',
+    etiket: 'Ağrı & Stres Bandı — Amiral Ürün',
+    aciklama: 'Transdermal dalga teknolojisiyle üretilen, bitkisel içerikli medikal bir bant. Yapıştırıldığı bölgeye etki ederek ağrıyı destekleyici amaçla giderir. İlaç içilmez, yan etkisi yok. Güney Kore\'de üretilir, Türkiye\'de patent ve kalite belgeli.',
+    anahtar: ['ağrı','sırt','bel','boyun','eklem','fıtık','kireç','romatizma','stres','baş ağrısı','migren','kas','fibro','kronik'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `One More Painless Night Glu tam sana göre! Bitkisel içerikli medikal bant — yapıştırıyorsun, ağrını destekler. İlaç yok, yan etki yok. Bir hafta dene, farkı kendin gör 😊`;
+      if (ton === 'detayli') return `One More Painless Night Glu, Transdermal Dalga Teknolojisi (TTS) ile Güney Kore\'de üretilen bitkisel medikal bir bant. İçeriğindeki doğal bileşenler cilt yoluyla emilerek ağrı bölgesine ulaşır. Belirttiğin ${sikayet} için özellikle önerilen ürün bu — sabah kalktığında bir bant yapıştırıyorsun, gün boyunca taşıyorsun, temiz bir çözüm. Patent ve kalite belgeli, Türkiye\'de Doğrudan Satış Yetki Belgesi mevcut.`;
+      return `${sikayet} için One More Painless Night Glu\'yu duymuş muydun? Bitkisel içerikli medikal bir bant — ilaç değil, ama çok etkili. Sabah yapıştırıyorsun, gün boyunca taşıyorsun. Ben de kullanıyorum ve farkı gerçekten hissediyorum. Sana bir haftalık deneme fırsatı sunabilir miyim? 😊`;
+    },
+    sss: [
+      { s: 'İlaç mı bu? Yan etkisi var mı?', c: 'Hayır, ilaç değil. Bitkisel içerikli medikal bir bant. İlaçla birlikte de kullanılabilir, ilaç etkileşimi yok. Hamile veya emziren anneler doktor onayıyla kullanabilir.' },
+      { s: 'Kaç saatte etkisini gösteriyor?', c: 'Kişiye göre değişir. Bazıları birkaç saatte, bazıları birkaç günde fark eder. Genellikle ilk haftada belirgin etki görülür.' },
+      { s: 'Sürekli kullanmam gerekiyor mu?', c: 'Hayır. İhtiyaç duydukça kullanılır. Düzenli kullanım daha iyi sonuç verir ama zorunlu değil.' },
+      { s: 'Hangi ağrıya iyi gelir?', c: 'Bel, sırt, boyun, eklem, kas ağrıları, stres kaynaklı gerginlik, migren ve baş ağrılarında destekleyici olarak kullanılır.' },
+      { s: 'Nereye yapıştırılır?', c: 'Ağrıyan bölgeye yapıştırılır. Migren için enseye veya şakağa, bel ağrısı için bel bölgesine.' },
+    ],
+    ek: null
+  },
+
+  b12: {
+    isim: 'B12 Plus',
+    emoji: '⚡',
+    etiket: 'B12 & Vitamin Bandı',
+    aciklama: 'B1, B3, E, C ve Folik Asit vitaminlerini içeren medikal bant. Ağızdan alınan tabletlere göre daha yüksek emilim sağlar — mide asidine takılmadan cilt yoluyla kana karışır. Yorgunluk, halsizlik ve konsantrasyon sorunlarında etkili.',
+    anahtar: ['yorgunluk','halsizlik','enerji','b12','vitamin','konsantrasyon','odak','anemi','vejetaryen','vegan','sinir'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `B12 Plus bandı duymuş muydun? Tablet değil, bant — emilimi çok daha yüksek. Enerjini toplar 😊`;
+      if (ton === 'detayli') return `One More B12 Plus, B1, B3, E, C vitaminleri ve Folik Asit içeren medikal bir bant. Ağızdan alınan B12 tabletleri mide asidinizde büyük ölçüde parçalanır ve yalnızca küçük bir kısmı emilir. B12 Plus ise cilt yoluyla direkt kana karışır — emilim oranı çok daha yüksek. ${sikayet} için özellikle önerilen bir ürün.`;
+      return `${sikayet} için sana çok işe yarayacak bir şey var. B12 Plus bandı — tablet içmiyorsun, bandı yapıştırıyorsun ve vitaminler cilt yoluyla emiliyor. Tablete göre çok daha etkili. Ben denedim, sabahları gerçekten daha enerjik hissediyorum. Merak eder misin? 😊`;
+    },
+    sss: [
+      { s: 'Neden tablet yerine bant?', c: 'Ağızdan alınan B12 tabletleri mide asidinde büyük ölçüde parçalanır. Bant ile cilt yoluyla emilim çok daha yüksek ve direkt.' },
+      { s: 'Vejetaryen/vegan kullanabilir mi?', c: 'Evet, bitkisel içerikli. Vejetaryen ve veganlar için ideal B12 kaynağı.' },
+      { s: 'Ne zaman yapıştırılır?', c: 'Sabah uyanınca temiz ve kuru bir cilt alanına — kol iç kısmı veya sırt ideal.' },
+      { s: 'Diğer ilaçlarla kullanılabilir mi?', c: 'Evet, vitamin bandı olduğu için ilaç etkileşimi riski yok. Ama kronik hastalığı olanlar doktora danışabilir.' },
+    ],
+    ek: { isim: 'Painless Night Glu', neden: 'Yorgunlukla birlikte stres kaynaklı kas gerginliği de yaşıyorsa Painless ağrı bandı ile kombinlenebilir.' }
+  },
+
+  slimstyle: {
+    isim: 'Slim Style',
+    emoji: '🔥',
+    etiket: 'Metabolizma & Diyet Destek Bandı',
+    aciklama: 'İlaç değil, medikal bant. Metabolizmayı dengeleyip harekete geçiren, aşırı yeme isteğini azaltan ve diyeti destekleyen bir yardımcı. Zayıflama ilacı değil — diyet yaparken süreci kolaylaştırır.',
+    anahtar: ['kilo','zayıflama','diyet','metabolizma','iştah','şişmanlık','bel','göbek','yeme bozukluğu','forma'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `Slim Style bandı duymuş muydun? Diyet yaparken metabolizmayı destekliyor, iştahı düzenlemeye yardımcı oluyor. İlaç değil 😊`;
+      if (ton === 'detayli') return `One More Slim Style, metabolizmayı dengeleyip harekete geçiren ve aşırı yeme isteğini azaltan medikal bir bant. İlaç veya zayıflama ilacı değil — diyetinizi destekleyen, süreci kolaylaştıran bir yardımcı. ${sikayet} için ek destek olarak öneriyorum.`;
+      return `${sikayet} için sana çok güzel bir şey anlatmak istiyorum. Slim Style diye bir bant var — diyet yaparken metabolizmana destek oluyor, iştahı düzenlemeye yardım ediyor. İlaç değil, bitkisel içerikli medikal bant. Çevremde çok güzel sonuçlar gördüm. Merak eder misin? 😊`;
+    },
+    sss: [
+      { s: 'Bant yapıştırınca kilo verir miyim?', c: 'Slim Style tek başına kilo verdirmez. Diyet ve hareketle birlikte kullanıldığında metabolizmayı destekler ve süreci kolaylaştırır.' },
+      { s: 'İlaç mı?', c: 'Hayır, kesinlikle ilaç değil. Bitkisel içerikli medikal bant. Yan etkisi yok.' },
+      { s: 'Nereye yapıştırılır?', c: 'Genellikle karın bölgesine veya kol iç kısmına yapıştırılır.' },
+      { s: 'Ne kadar süre kullanılır?', c: 'Düzenli kullanım daha iyi sonuç verir. Diyet süresince kullanılması önerilir.' },
+    ],
+    ek: { isim: 'Fit&More Shake', neden: 'Kilo yönetimi için Slim Style bandıyla birlikte Fit&More protein shake de önerilebilir.' }
+  },
+
+  melatonin: {
+    isim: 'Melatonin Plus',
+    emoji: '😴',
+    etiket: 'Uyku & Rahatlama Bandı',
+    aciklama: 'Melatonin içeren medikal bant. Uyku düzenini destekler, uykuya dalmayı kolaylaştırır. Uyku ilacı bağımlılığı yaratmaz, doğal uyku ritmine destek olur.',
+    anahtar: ['uyku','uykusuzluk','geç uyuma','uyuyamıyorum','insomnia','yorgun kalkma','sabah yorgun','gece','melatonin'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `Melatonin Plus bandı tam sana göre! Uyumadan önce yapıştırıyorsun, doğal uyku düzenine destek oluyor. İlaç bağımlılığı yok 😴`;
+      if (ton === 'detayli') return `One More Melatonin Plus, melatonin içeren medikal bir bant. Tablet melatonin yerine cilt yoluyla emilim sağlar. Uyku ilacı değil — bağımlılık yaratmaz, doğal uyku ritmine destek olur. ${sikayet} için çok uygun bir seçenek.`;
+      return `${sikayet} için sana çok güzel bir şey var. Melatonin Plus bandı — uyumadan önce yapıştırıyorsun, uyku düzenini destekliyor. İlaç değil, bağımlılık yaratmıyor. Ben de denedim, sabah gerçekten daha dinlenmiş uyanıyorum. Merak eder misin? 😊`;
+    },
+    sss: [
+      { s: 'Uyku ilacı gibi bağımlılık yapar mı?', c: 'Hayır. Melatonin doğal bir hormon. Bağımlılık yaratmaz, uyku ilacı değil.' },
+      { s: 'Ne zaman yapıştırılır?', c: 'Uyumadan 30-60 dakika önce temiz bir cilt alanına yapıştırılır.' },
+      { s: 'Her gece mi kullanılır?', c: 'İhtiyaç duydukça kullanılabilir. Düzenli kullanım uyku ritmi oturuncaya kadar faydalıdır.' },
+      { s: 'Mevcut ilaçlarla kullanılabilir mi?', c: 'Genel olarak evet, ama kronik hastalık ve ilaç kullanımı varsa doktora danışmak önerilir.' },
+    ],
+    ek: { isim: 'B12 Plus', neden: 'Uyku problemi çoğunlukla yorgunlukla birlikte gelir. B12 Plus ile kombinlenerek gündüz enerjisi de desteklenebilir.' }
+  },
+
+  omevia: {
+    isim: 'Omevia',
+    emoji: '💊',
+    etiket: 'Genel Sağlık & Bağışıklık Bandı',
+    aciklama: 'Genel vücut direncini destekleyen, bağışıklık sistemini güçlendiren medikal bant. Özellikle sık hastalananlara, mevsim geçişlerinde koruyucu olarak ve genel takviye amacıyla önerilir.',
+    anahtar: ['bağışıklık','hastalanma','grip','soğuk algınlığı','genel sağlık','takviye','direnç','koruyucu','yorgunluk','vücut direnci'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `Omevia bandı tam sana göre! Bağışıklığı destekliyor, vücut direncini artırıyor. Mevsim geçişlerinde çok işe yarıyor 😊`;
+      if (ton === 'detayli') return `One More Omevia, bağışıklık sistemini destekleyen medikal bir bant. Özellikle ${sikayet} için vücut direncini artırıcı etkisi olan bitkisel bileşenler içerir. Mevsim geçişlerinde ve stresli dönemlerde koruyucu olarak kullanılması önerilir.`;
+      return `${sikayet} için çok güzel bir şey var — Omevia bandı. Bağışıklığı destekliyor, vücut direncini artırıyor. Özellikle mevsim geçişlerinde çevremde çok olumlu geri dönüşler aldım. Bir deneyelim mi? 😊`;
+    },
+    sss: [
+      { s: 'İlaçla birlikte kullanılabilir mi?', c: 'Bitkisel içerikli bant olduğu için genel olarak evet. Ama kronik ilaç kullanımı varsa doktora danışılabilir.' },
+      { s: 'Ne sıklıkla kullanılır?', c: 'Günlük veya günaşırı kullanılabilir. Mevsim geçişlerinde düzenli kullanım önerilir.' },
+      { s: 'Çocuklar kullanabilir mi?', c: 'Çocuk kullanımı için doktor onayı alınması önerilir.' },
+    ],
+    ek: null
+  },
+
+  dekamin: {
+    isim: 'Dekamin',
+    emoji: '💫',
+    etiket: 'Genel Takviye & İyi Hisset Bandı',
+    aciklama: 'Genel sağlık takviyesi amacıyla kullanılan medikal bant. Kendini iyi hissetmek, günlük enerjiyi desteklemek ve genel vücut dengesini korumak için önerilir.',
+    anahtar: ['genel takviye','kendimi iyi hissetmek','moral','denge','genel destek','enerji','toparlanma'],
+    sunum: (sikayet, ton) => {
+      if (ton === 'kisa') return `Dekamin bandı tam sana göre — genel takviye, kendini iyi hissettiriyor 😊`;
+      return `${sikayet} için Dekamin bandını öneriyorum. Genel vücut dengesini destekliyor, kendinizi daha iyi hissettiriyor. Basit ama etkili bir takviye çözümü. Merak eder misin? 😊`;
+    },
+    sss: [
+      { s: 'Ne zaman kullanılır?', c: 'Sabah temiz cilde yapıştırılır, gün boyunca taşınır.' },
+      { s: 'Başka ürünlerle birlikte kullanılabilir mi?', c: 'Evet, One More ürünleri birlikte kullanılabilir.' },
+    ],
+    ek: { isim: 'B12 Plus', neden: 'Genel takviye için B12 Plus ile birlikte kullanımı sinerjik etki yaratır.' }
+  },
+
+  lumiere: {
+    isim: 'Lumiere Beauty Set',
+    emoji: '✨',
+    etiket: 'Cilt Bakımı & Güzellik Seti',
+    aciklama: 'Cilt nemlendiricisi, bakımı ve güzellik rutini için tasarlanmış set. Günlük cilt bakımını kolaylaştırır, cilt sağlığını destekler.',
+    anahtar: ['cilt','yüz','cilt bakımı','güzellik','nem','cilt sorunu','kuru cilt','karma cilt','cilt rengi','leke'],
+    sunum: (sikayet, ton) => `${sikayet} için Lumiere Beauty Set'i öneriyorum. Cilt bakım rutini için tasarlanmış, hem nemlendirici hem bakım etkisi olan bir set. Çevremde çok beğenildi, bir dene! 😊`,
+    sss: [
+      { s: 'Her cilt tipine uygun mu?', c: 'Evet, karma ve kuru ciltler dahil her cilt tipine uygundur.' },
+      { s: 'Günde kaç kez kullanılır?', c: 'Sabah ve akşam olmak üzere günde 2 kez önerilir.' },
+    ],
+    ek: { isim: 'Collagen Patch', neden: 'Cilt bakımını derinlemesine desteklemek için Collagen Patch ile kombinlenebilir.' }
+  },
+
+  collagen: {
+    isim: 'Collagen Patch',
+    emoji: '🧴',
+    etiket: 'Kolajen & Cilt Gençleştirme',
+    aciklama: 'Kolajen desteği sağlayan yama. Cilt elastikiyetini artırır, yaşlanma belirtilerini destekler. Pratik kullanım — yüze veya vücuda yapıştırılır.',
+    anahtar: ['kolajen','yaşlanma','kırışıklık','cilt elastikiyeti','sarkma','yaş','anti-aging','gençleşme'],
+    sunum: (sikayet, ton) => `${sikayet} için Collagen Patch tam sana göre. Kolajen desteği sağlıyor, cilde yapıştırıyorsun ve etkisi oluyor. Pratik ve etkili bir çözüm 😊`,
+    sss: [
+      { s: 'Kırışıklığı giderir mi?', c: 'Kolajen üretimini destekleyerek zamanla cilt görünümünü iyileştirir. Anlık kırışıklık gidericisi değil, takviye amacıyla kullanılır.' },
+      { s: 'Ne sıklıkla kullanılır?', c: 'Haftada 2-3 kez veya üretici tavsiyesine göre kullanılır.' },
+    ],
+    ek: { isim: 'Lumiere Beauty Set', neden: 'Lumiere Beauty Set ile kombine kullanım cilt bakımını bütünleştirir.' }
+  },
+
+  omicoff: {
+    isim: 'Omicoff (Classic / Mocha / Latte)',
+    emoji: '☕',
+    etiket: 'Fonksiyonel Kahve',
+    aciklama: 'Sağlık destekleyici bileşenler içeren fonksiyonel kahve. Normal kahvenin tadını alırken vücudunuza ek fayda sağlar. Classic, Mocha ve Latte seçenekleri mevcut.',
+    anahtar: ['kahve','enerji','sabah','fonksiyonel','içecek','keyif','alışkanlık'],
+    sunum: (sikayet, ton) => `Zaten kahve içiyorsan neden sağlığına da katkı sağlayan bir kahve içmeyesin? Omicoff — normal kahvenin tadı, ek sağlık faydası. Classic, Mocha ve Latte seçeneği var. Bir kutu deneyelim mi? ☕`,
+    sss: [
+      { s: 'Normal kahveden farkı ne?', c: 'Fonksiyonel bileşenler içeriyor — kahvenin tadı aynı ama vücuda ekstra destek sağlıyor.' },
+      { s: 'Kafeini var mı?', c: 'Evet, kahve bazlı olduğu için kafein içerir. Kafeine duyarlıysanız az miktarda başlayın.' },
+      { s: 'Nasıl hazırlanır?', c: 'Normal kahve gibi — sıcak suyla karıştırılır.' },
+    ],
+    ek: null
+  },
+
+  shake: {
+    isim: 'Fit&More Shake (Chocolate / Vanilla)',
+    emoji: '🍫',
+    etiket: 'Protein & Kilo Yönetim Shake\'i',
+    aciklama: 'Protein desteği ve kilo yönetimi için tasarlanmış shake. Sporcular ve aktif yaşam sürenler için ideal. Çikolata ve vanilya seçeneği mevcut.',
+    anahtar: ['protein','spor','kas','shake','kilo','egzersiz','sporcu','fitness','form','beslenme'],
+    sunum: (sikayet, ton) => `${sikayet} için Fit&More Shake tam sana göre! Protein desteği için harika, lezzetli de. Çikolata ve vanilya seçeneği var. Sporcular için özel formül 💪`,
+    sss: [
+      { s: 'Günde kaç kez içilir?', c: 'Genellikle antrenman sonrası veya öğün yerine günde 1-2 kez.' },
+      { s: 'Kilo verdiriyor mu?', c: 'Protein içeriği tokluk hissi verir ve kas kütlesini destekler. Slim Style ile birlikte kilo yönetiminde etkili.' },
+    ],
+    ek: { isim: 'Slim Style', neden: 'Kilo yönetimi hedefleniyorsa Slim Style bandıyla kombinlenebilir.' }
+  },
+
+  omiprodent: {
+    isim: 'Omiprodent Diş Macunu & Set',
+    emoji: '🦷',
+    etiket: 'Profesyonel Diş Bakımı',
+    aciklama: 'Profesyonel diş bakımı için tasarlanmış özel formüllü diş macunu. Diş beyazlatma, ağız bakımı ve hijyen için kullanılır. Set versiyonu ekstra bakım ürünleri içerir.',
+    anahtar: ['diş','ağız','diş sarısı','diş beyazlatma','diş bakımı','diş eti','ağız kokusu','diş macunu'],
+    sunum: (sikayet, ton) => `${sikayet} için Omiprodent diş bakım ürününü öneriyorum. Profesyonel formül, evde dişçi bakımı kalitesi. Çevremde çok beğenildi 🦷`,
+    sss: [
+      { s: 'Normal diş macunundan farkı ne?', c: 'Profesyonel formül içeriyor — daha etkili beyazlatma ve bakım sağlar.' },
+      { s: 'Her gün kullanılır mı?', c: 'Evet, normal diş macunu gibi günde 2 kez kullanılır.' },
+    ],
+    ek: null
+  },
+
+  pawsy: {
+    isim: 'Pawsy (Nano Spray / Towel / Wipes)',
+    emoji: '🐾',
+    etiket: 'Evcil Hayvan Bakım Ürünleri',
+    aciklama: 'Evcil hayvanlar için tasarlanmış bakım ürünleri serisi. Nano Spray, Towel ve Wipes seçenekleri mevcut. Güvenli, doğal formül.',
+    anahtar: ['evcil hayvan','köpek','kedi','hayvan','pet','pati','kürk','tüy','evcil'],
+    sunum: (sikayet, ton) => `Evcil dostun için One More de düşünmüş! Pawsy serisi — Nano Spray, havlu ve mendil. Doğal formül, güvenli. Evcil hayvan sahibi arkadaşlarına da gösterebilirsin 🐾`,
+    sss: [
+      { s: 'Hangi hayvanlar için uygundur?', c: 'Köpek ve kediler dahil evcil hayvanlar için uygundur.' },
+      { s: 'İçeriği güvenli mi?', c: 'Evcil hayvanlar için özel formüle edilmiş, güvenli bileşenler içerir.' },
+    ],
+    ek: null
+  },
+
+  hair: {
+    isim: 'Hair Repair Shampoo / Mask / Shower Gel',
+    emoji: '💆',
+    etiket: 'Saç Bakım Serisi',
+    aciklama: 'Saç dökülmesini destekleyici, yıpranmış saçları onaran saç bakım serisi. Şampuan, maske ve duş jeli seçenekleri mevcut.',
+    anahtar: ['saç','saç dökülmesi','saç kırılması','saç bakımı','yıpranmış saç','kepek','saç büyümesi'],
+    sunum: (sikayet, ton) => `${sikayet} için Hair Repair serisini öneriyorum. Saç dökülmesini destekliyor, yıpranmış saçları onarıyor. Şampuan, maske ve duş jeli bir arada 💆`,
+    sss: [
+      { s: 'Saç dökülmesini durduruyor mu?', c: 'Saç dökülmesini azaltmaya yardımcı olur, saç sağlığını destekler. Sonuçlar kişiye göre değişir.' },
+      { s: 'Ne sıklıkla kullanılır?', c: 'Şampuan her saç yıkamada, maske haftada 1-2 kez kullanılır.' },
+    ],
+    ek: null
+  },
+
+  glutamore: {
+    isim: 'Glutamore',
+    emoji: '💪',
+    etiket: 'Sporcu & Kas Destek Ürünü',
+    aciklama: 'Sporcular ve aktif yaşam sürenler için kas desteği sağlayan ürün. Antrenman performansını ve toparlanmayı destekler.',
+    anahtar: ['kas','spor','antrenman','toparlanma','performans','sporcu','fitness','gym','glutamin'],
+    sunum: (sikayet, ton) => `${sikayet} için Glutamore tam sana göre! Sporcular için kas desteği ve toparlanma ürünü. Antrenman sonrası çok işe yarıyor 💪`,
+    sss: [
+      { s: 'Ne zaman alınır?', c: 'Genellikle antrenman öncesi veya sonrası alınır.' },
+      { s: 'Fit&More Shake ile birlikte kullanılabilir mi?', c: 'Evet, protein shake ile birlikte kullanımı sinerjik etki yaratır.' },
+    ],
+    ek: { isim: 'Fit&More Shake', neden: 'Protein desteği için Fit&More Shake ile kombinlenebilir.' }
+  },
+
+  nightladies: {
+    isim: 'Night Ladies / Night Gentlemen',
+    emoji: '🌙',
+    etiket: 'Yetişkin Patch — Afrodizyak',
+    aciklama: 'Patch formatında özel yetişkin ürünü. Doğal içerikli, özel formül.',
+    anahtar: ['afrodizyak','cinsel','yetişkin','çift','libido','özel'],
+    sunum: (sikayet, ton) => `Bu konuda özel bir ürün var — Night Ladies veya Night Gentlemen. Doğal içerikli, patch formatında. Detayları yüz yüze ya da özel konuşalım 🌙`,
+    sss: [
+      { s: 'Güvenli mi?', c: 'Doğal içerikli, özel formül. Detaylar için ürün açıklamasını inceleyin.' },
+    ],
+    ek: null
+  },
+
+  herbal: {
+    isim: 'One More Herbal Tea',
+    emoji: '🌿',
+    etiket: 'Bitkisel Çay',
+    aciklama: 'Doğal bitkisel içerikli çay. Günlük rutine sağlıklı bir içecek alternatifi olarak eklenebilir.',
+    anahtar: ['çay','bitkisel','doğal','içecek','bitki','rahatlama','sindirim'],
+    sunum: (sikayet, ton) => `Doğal yaşama ilgi duyuyorsan One More Herbal Tea'yi de seversin! Bitkisel içerikli, sağlıklı içecek alternatifi 🌿`,
+    sss: [
+      { s: 'Günde kaç bardak içilir?', c: '1-2 bardak önerilir. Aşırıya kaçmadan tüketilmesi tavsiye edilir.' },
+    ],
+    ek: null
+  },
+};
+
+// Anahtar kelime → ürün eşleştirme
+function urunBelirle(sikayet) {
+  const s = sikayet.toLowerCase();
+  const skorlar = {};
+  for (const [key, urun] of Object.entries(URUNLER)) {
+    let skor = 0;
+    urun.anahtar.forEach(k => { if (s.includes(k)) skor++; });
+    if (skor > 0) skorlar[key] = skor;
+  }
+  if (Object.keys(skorlar).length === 0) return 'painless'; // varsayılan
+  return Object.entries(skorlar).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function generateUrun() {
+  const sikayet = document.getElementById('u-sikayet').value.trim();
+  const tip     = document.getElementById('u-tip').value;
+  const ton     = document.getElementById('u-ton').value;
+
+  if (!sikayet) { document.getElementById('u-sikayet').focus(); return; }
+
+  const key  = urunBelirle(sikayet);
+  const urun = URUNLER[key];
+
+  // Ürün kartı
+  document.getElementById('urun-emoji').textContent   = urun.emoji;
+  document.getElementById('urun-isim').textContent    = urun.isim;
+  document.getElementById('urun-etiket').textContent  = urun.etiket;
+  document.getElementById('urun-aciklama').textContent = urun.aciklama;
+
+  // Sunum metni
+  document.getElementById('urun-sunum').textContent = urun.sunum(sikayet, ton);
+
+  // SSS kartları
+  const sssEl = document.getElementById('urun-sss');
+  sssEl.innerHTML = urun.sss.map(item => `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:.75rem 1rem;">
+      <div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:4px">❓ ${item.s}</div>
+      <div style="font-size:13px;color:var(--ink2);line-height:1.6">✅ ${item.c}</div>
+    </div>
+  `).join('');
+
+  // Ek ürün önerisi
+  const ekWrap = document.getElementById('urun-ek-wrap');
+  const ekEl   = document.getElementById('urun-ek');
+  if (urun.ek) {
+    ekEl.innerHTML = `<strong>${urun.ek.isim}</strong><br>${urun.ek.neden}`;
+    ekWrap.style.display = 'block';
+  } else {
+    ekWrap.style.display = 'none';
+  }
+
+  document.getElementById('urun-result').style.display = 'block';
+  document.getElementById('urun-result').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function copyById(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.innerHTML = '<i class="ti ti-check"></i> Kopyalandı';
+    setTimeout(() => { btn.innerHTML = '<i class="ti ti-copy"></i> Kopyala'; }, 2000);
+  });
+}
+
+// ===================== UTILS =====================
+function closeModal(id) {
+  document.getElementById(id).classList.remove('on');
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('on'); });
+});
+
+function save() {
+  try { localStorage.setItem('nma_standalone', JSON.stringify(prospects)); } catch(e){}
+}
+
+function renderHeader() {
+  document.getElementById('hdr-n').textContent = prospects.length;
+}
+
+// ===================== INIT =====================
+upv();
+renderProspects();
+renderHeader();
+</script>
+</body>
+</html>
