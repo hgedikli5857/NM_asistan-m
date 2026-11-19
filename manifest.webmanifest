@@ -1,0 +1,15 @@
+{
+  "name": "NM Departmanı",
+  "short_name": "NM Departmanı",
+  "description": "Network marketing ekip operasyon merkezi",
+  "lang": "tr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F5EF",
+  "theme_color": "#0F1E3D",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
