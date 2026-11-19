@@ -2,7 +2,7 @@
 import { supabase } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
-import { AI_KEY, getApiKey } from './iletisim.js';
+import { AI_KEY, getApiKey, serverReady, hasShareConsent, setShareConsent } from '../ai/client.js';
 
 export function renderSettings(el, ctx, { recovery = false } = {}) {
   const p = ctx.profile || {};
@@ -32,17 +32,20 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
       </form>
 
       <form class="card" id="ai-form" novalidate>
-        <h2>AI asistan (isteğe bağlı)</h2>
-        <p class="small muted">İletişim biriminde mesajları kişiselleştirmek için kendi Claude API anahtarını ekleyebilirsin.
-          Anahtar <strong>yalnızca bu cihazın tarayıcısında</strong> saklanır, sunucuya gönderilmez.
-          Kullanım ücreti API hesabına yansır.</p>
+        <h2>AI asistan</h2>
+        <div id="ai-status" class="ai-status"><span class="muted small">Durum kontrol ediliyor…</span></div>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="ai-share" ${hasShareConsent() ? 'checked' : ''}>
+          <span>Cevap önerisi ve liste çalışması için aday bilgilerinin (ad, aşama, etiket, not) AI'ya gönderilmesine izin veriyorum.
+          Telefon ve Instagram gönderilmez.</span></label>
+        <details class="ai-local"><summary class="small">Bu cihaza kişisel anahtar ekle (yedek)</summary>
+        <p class="small muted">Sunucu anahtarı yoksa bu cihazda kendi anahtarın kullanılır. Anahtar yalnızca bu tarayıcıda saklanır.</p>
         <div class="field"><label for="ai-key">Claude API anahtarı</label>
           <input id="ai-key" name="key" type="password" autocomplete="off" placeholder="${getApiKey() ? 'Kayıtlı (değiştirmek için yeni anahtar gir)' : 'sk-ant-…'}"></div>
         <p class="error" id="ai-error" role="alert"></p>
         <div class="quick">
           <button class="btn btn-primary" type="submit">Kaydet</button>
           ${getApiKey() ? '<button class="btn btn-ghost" type="button" id="ai-remove">Anahtarı sil</button>' : ''}
-        </div>
+        </div></details>
       </form>
 
       <section class="card">
@@ -107,6 +110,11 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
     toast('API anahtarı bu cihaza kaydedildi.');
     renderSettings(el, ctx);
   });
+  el.querySelector('#ai-share').addEventListener('change', e => {
+    setShareConsent(e.target.checked);
+    toast(e.target.checked ? 'Aday bilgisi paylaşım izni verildi.' : 'İzin geri alındı; AI aday bilgisi istemeden önce tekrar soracak.');
+  });
+  aiStatus(el.querySelector('#ai-status'));
   el.querySelector('#ai-remove')?.addEventListener('click', () => {
     localStorage.removeItem(AI_KEY);
     localStorage.removeItem('nma_api_key');
@@ -130,6 +138,24 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
   el.querySelector('#export-json').addEventListener('click', e => exportData(e.currentTarget, 'json'));
   el.querySelector('#export-csv').addEventListener('click', e => exportData(e.currentTarget, 'csv'));
   if (recovery) el.querySelector('#n-pass').focus();
+}
+
+async function aiStatus(box) {
+  const server = await serverReady();
+  let used = 0;
+  if (server) {
+    const { data } = await supabase.from('ai_usage').select('count').eq('day', new Date().toISOString().slice(0, 10)).maybeSingle();
+    used = data?.count || 0;
+  }
+  box.innerHTML = server
+    ? `<p><span class="badge ok">Sunucu AI aktif</span> Tüm cihazlarında ve ekibinde anahtarsız çalışır.</p>
+       <p class="small muted">Bugünkü kullanımın: ${used}/60 istek. Kullanım ücreti uygulama sahibinin API hesabına yansır.</p>`
+    : getApiKey()
+      ? `<p><span class="badge gold">Bu cihazda kişisel anahtar</span> AI yalnızca bu cihazda çalışıyor.</p>
+         <p class="small muted">Tüm cihazlarda çalışması için anahtarı Supabase'e (Edge Function gizli değeri <code>ANTHROPIC_API_KEY</code>) eklemelisin.</p>`
+      : `<p><span class="badge warn">AI kurulmadı</span></p>
+         <p class="small muted">Supabase panelinde nm-departmani → Edge Functions → Secrets bölümüne <code>ANTHROPIC_API_KEY</code> adıyla Claude API anahtarını ekle.
+         Ya da aşağıdan yalnızca bu cihaz için kişisel anahtar gir.</p>`;
 }
 
 function planName(plan) {

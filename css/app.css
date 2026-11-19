@@ -503,3 +503,25 @@ blockquote.opener { margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid
 .picker [hidden] { display: none !important; }
 .tag-chips { align-items: center; margin: 4px 0 8px; }
 .chip.tag .cnt { font-size: .72rem; opacity: .75; }
+
+/* ===================== AI: cevap öner, koç, liste çalışması ===================== */
+.reply-opt { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface-2); }
+.reply-opt header { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 6px; }
+.reply-opt p { margin: 0 0 8px; white-space: pre-wrap; }
+.quick-prompts { margin-bottom: 10px; }
+.chat.coach { max-height: 520px; }
+.list-intro { margin-bottom: 14px; }
+.list-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.list-card header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.list-card h3 { margin: 0 0 4px; }
+.list-card.p1 { border-color: var(--danger); }
+.list-card.p2 { border-color: var(--gold-500); }
+.list-note { width: 100%; padding: 9px 11px; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface); margin: 6px 0; }
+.list-note:focus { outline: none; border-color: var(--gold-500); border-style: solid; }
+.sugg { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; margin: 6px 0 10px; font-size: .9rem; }
+.sugg p { margin: 0 0 6px; }
+.sugg blockquote { margin: 6px 0 0; padding: 8px 10px; border-left: 3px solid var(--gold-500); background: var(--surface); }
+.ai-status p { margin: 0 0 6px; }
+.ai-local { margin-top: 12px; }
+.ai-local summary { cursor: pointer; color: var(--gold-600); }
+code { font-family: var(--font-mono, monospace); font-size: .85em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }

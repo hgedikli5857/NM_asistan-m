@@ -5,20 +5,21 @@ import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisi
 import { checkMessage, fillTemplate } from '../iletisim/uyum.js';
 import { CHANNELS, waNumber, addDays, stageLabel } from '../kazanim/model.js';
 import { pickerHTML, bindPicker } from '../ui/picker.js';
-import { SCENARIOS, MAX_TURNS, systemPrompt, feedbackPrompt, callClaude, apiMessages } from '../iletisim/pratik.js';
+import { SCENARIOS, MAX_TURNS, systemPrompt, feedbackPrompt, apiMessages } from '../iletisim/pratik.js';
+import { aiChat, aiAvailable, extractJSON, ensureShareConsent, prospectBrief, ETHICS, getApiKey, AI_KEY } from '../ai/client.js';
+import { TEMPS } from '../kazanim/model.js';
 
 const TABS = [
   { id: 'yaz', label: 'Mesaj yaz', icon: 'ti-pencil' },
+  { id: 'cevap', label: 'Cevap öner', icon: 'ti-sparkles' },
   { id: 'sablon', label: 'Şablonlar', icon: 'ti-template' },
   { id: 'itiraz', label: 'İtiraz rehberi', icon: 'ti-shield-question' },
   { id: 'pratik', label: 'Pratik', icon: 'ti-messages' }
 ];
-export const AI_KEY = 'nmd_anthropic_key';
-const LEGACY_AI_KEY = 'nma_api_key';
-export const getApiKey = () => localStorage.getItem(AI_KEY) || localStorage.getItem(LEGACY_AI_KEY) || '';
+export { AI_KEY, getApiKey };
 
 let el, ctx;
-let state = { tab: 'yaz', prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '' };
+let state = { tab: 'yaz', prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '', ai: false, reply: { goal: 'auto', input: '', result: null, busy: false, error: '' } };
 
 export async function renderIletisim(target, context) {
   el = target; ctx = context;
@@ -52,6 +53,12 @@ export async function renderIletisim(target, context) {
   if (s.error) throw s.error;
   state.prospects = p.data;
   state.mine = s.data;
+  state.ai = await aiAvailable();
+  // Başka sayfadan gönderilen taslak (Koç / Liste çalışması)
+  try {
+    const draft = JSON.parse(sessionStorage.getItem('nmd_draft') || 'null');
+    if (draft) { sessionStorage.removeItem('nmd_draft'); state.tab = 'yaz'; state.text = draft.text || ''; if (draft.prospectId) state.prospectId = draft.prospectId; }
+  } catch { /* yok */ }
   draw();
 }
 
@@ -69,8 +76,9 @@ const currentProspect = () => state.prospects.find(p => p.id === state.prospectI
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === state.tab));
   const body = el.querySelector('#i-body');
-  body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : viewObjections();
+  body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : state.tab === 'cevap' ? viewReply() : viewObjections();
   if (state.tab === 'yaz') { renderCheck(); bindPicker(el, { id: 'i-pick', prospects: state.prospects, onSelect: selectProspect }); }
+  if (state.tab === 'cevap') bindPicker(el, { id: 'r-pick', prospects: state.prospects, onSelect: p => { state.prospectId = p ? p.id : ''; } });
 }
 
 // ====================================================================
@@ -78,7 +86,7 @@ function draw() {
 function viewCompose() {
   const p = currentProspect();
   const list = allTemplates().filter(t => !state.purpose || t.purpose === state.purpose).slice(0, 12);
-  const hasKey = !!getApiKey();
+  const hasKey = state.ai;
   return `
   <div class="compose">
     <section class="card">
@@ -115,7 +123,7 @@ function viewCompose() {
         ${hasKey ? `<button class="btn btn-ghost" data-act="ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile kişiselleştir</button>` : ''}
         ${p ? `<button class="btn btn-primary" data-act="log"><i class="ti ti-check" aria-hidden="true"></i> Gönderdim, kaydet</button>` : ''}
       </div>
-      ${hasKey ? '' : `<p class="small muted" style="margin-top:10px">AI ile kişiselleştirme için <a href="#/ayarlar">Ayarlar</a>'dan Claude API anahtarını ekleyebilirsin.</p>`}
+      ${hasKey ? '' : `<p class="small muted" style="margin-top:10px">AI özellikleri için <a href="#/ayarlar">Ayarlar → AI asistan</a> bölümüne bak.</p>`}
       <p class="hint-box" style="margin-top:12px"><i class="ti ti-bulb" aria-hidden="true"></i>
         Mesajda her şeyi anlatma. Amaç merak uyandırıp görüşmeye davet etmek; detaylar canlı görüşmede.</p>
     </section>
@@ -233,6 +241,10 @@ function onClick(e) {
   if (fp) { state.filterPurpose = fp.dataset.fpurpose; draw(); return; }
   const use = t.closest('[data-use]');
   if (use) { useTemplate(allTemplates().find(x => String(x.id) === use.dataset.use)?.body); return; }
+  const ru = t.closest('[data-ruse]');
+  if (ru) { useTemplate(state.reply.result.secenekler[+ru.dataset.ruse].mesaj); return; }
+  const rc = t.closest('[data-rcopy]');
+  if (rc) { navigator.clipboard.writeText(state.reply.result.secenekler[+rc.dataset.rcopy].mesaj).then(() => toast('Kopyalandı.')); return; }
   const obj = t.closest('[data-obj]');
   if (obj) { useTemplate(OBJECTIONS.find(x => x.id === obj.dataset.obj)?.reply); return; }
 
@@ -248,6 +260,8 @@ function onClick(e) {
     case 'del-tpl': deleteTemplate(b); break;
     case 'close': el.querySelector('#i-dialog').close(); break;
     case 'sc-start': startPractice(b.dataset.id); break;
+    case 'r-save': saveReplyState(b); break;
+    case 'r-temp': setReplyTemp(); break;
     case 'sc-end': endPractice(b); break;
     case 'sc-reset': state.practice = null; draw(); break;
   }
@@ -335,6 +349,7 @@ async function onSubmit(e) {
   e.preventDefault();
   const form = e.target;
   if (form.dataset.form === 'chat') return sendChat(form);
+  if (form.dataset.form === 'reply') return suggestReply(form);
   if (form.dataset.form !== 'tpl') return;
   const f = n => form.elements.namedItem(n);
   const err = form.querySelector('#t-error');
@@ -367,42 +382,16 @@ async function onSubmit(e) {
 // ====================================================================
 // AI ile kişiselleştirme (anahtar yalnızca bu tarayıcıda saklanır)
 async function aiPersonalize(btn) {
-  const key = getApiKey();
   const p = currentProspect();
   const draft = state.text.trim();
-  if (!key) { toast('Önce Ayarlar\'dan API anahtarını ekle.'); return; }
   if (!draft) { toast('Önce bir şablon seç ya da taslak yaz.'); return; }
+  if (p && !ensureShareConsent()) return;
   btn.disabled = true;
   const old = btn.innerHTML;
   btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
-  const info = p ? [`Ad: ${p.full_name}`, p.occupation && `Meslek: ${p.occupation}`, p.interests && `İlgi alanları: ${p.interests}`,
-    p.notes && `Notlar: ${p.notes}`, `Aşama: ${stageLabel(p.stage)}`].filter(Boolean).join('\n') : 'Aday bilgisi yok.';
-  const prompt = `Bir network marketing distribütörü için WhatsApp mesajını kişiselleştir.
-Kurallar:
-- Türkçe, samimi, kısa (en fazla 3 cümle).
-- Sağlık iddiası YASAK (tedavi eder, iyileştirir, ağrıyı geçirir, hastalık adı vb.).
-- Kazanç vaadi YASAK (rakam, garanti, kolay/pasif gelir, zengin ol vb.).
-- Baskı ve acele ettirme YASAK.
-- Amaç merak uyandırıp kısa bir görüşmeye davet etmek; ürün veya iş detayına girme.
-- Sadece mesaj metnini yaz, açıklama ekleme.
-
-Aday:
-${info}
-
-Taslak mesaj:
-${draft}`;
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.error?.message || `HTTP ${resp.status}`);
-    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-    if (!text) throw new Error('Boş yanıt geldi');
-    state.text = text;
+    state.text = await aiChat({ maxTokens: 400, messages: [{ role: 'user', content:
+      `Bir network marketing distribütörü için WhatsApp mesajını kişiselleştir. ${ETHICS}\nSadece mesaj metnini yaz, açıklama ekleme.\n\nAday: ${p ? prospectBrief(p) : 'bilgi yok'}\n\nTaslak:\n${draft}` }] });
     draw();
     toast('AI önerisi hazır. Göndermeden önce oku ve düzenle.');
   } catch (err) {
@@ -412,14 +401,122 @@ ${draft}`;
 }
 
 // ====================================================================
+// Cevap öner: durumu anlat ya da adayın mesajını yapıştır → AI 3 yanıt önerir
+const GOALS = { auto: 'Sen karar ver', davet: 'Görüşmeye davet', itiraz: 'İtirazı yanıtla', takip: 'Sohbeti sürdür', kapat: 'Nazikçe kapat' };
+const INTENT = { ilgili: ['İlgili', 'ok'], kararsiz: ['Kararsız', 'gold'], itiraz: ['İtirazı var', 'warn'], ilgisiz: ['İlgisiz', ''], belirsiz: ['Belirsiz', ''] };
+
+function viewReply() {
+  const r = state.reply;
+  if (!state.ai) return `<div class="card empty"><i class="ti ti-sparkles" aria-hidden="true"></i><h2>AI henüz kurulmadı</h2>
+    <p class="muted">Cevap önerisi için AI gerekiyor. Ayarlar → AI asistan bölümünden kurabilirsin.</p><a class="btn btn-gold" href="#/ayarlar">Ayarlara git</a></div>`;
+  const res = r.result;
+  const cp = currentProspect();
+  return `<div class="compose">
+    <form class="card" data-form="reply" novalidate>
+      <h2><i class="ti ti-message-question" aria-hidden="true"></i> Ne oldu?</h2>
+      <div class="field">${pickerHTML({ id: 'r-pick', label: 'Kiminle yazışıyorsun? (isteğe bağlı)', prospects: state.prospects, selectedId: state.prospectId })}</div>
+      <div class="field"><label for="r-input">Adayın son mesajını yapıştır ya da durumu anlat *</label>
+        <textarea id="r-input" name="input" rows="6" maxlength="3000" placeholder="Ör. Sunumu izledi, 'güzel ama şu an param yok, belki sonra' yazdı. 2 gündür cevap vermiyor.">${esc(r.input)}</textarea></div>
+      <fieldset class="field"><legend>Amacın</legend><div class="chips">
+        ${Object.entries(GOALS).map(([k, l]) => `<label class="chip"><input type="radio" name="goal" value="${k}" ${r.goal === k ? 'checked' : ''}>${l}</label>`).join('')}</div></fieldset>
+      <p class="error" id="r-error" role="alert">${esc(r.error)}</p>
+      <button class="btn btn-primary" type="submit" ${r.busy ? 'disabled' : ''}><i class="ti ti-sparkles" aria-hidden="true"></i> ${r.busy ? 'Düşünüyor…' : 'Cevap öner'}</button>
+      <p class="small muted" style="margin-top:10px">Ne kadar ayrıntı verirsen öneri o kadar isabetli olur: ne zaman tanıştınız, neyle ilgilendi, ne dedi.</p>
+    </form>
+    <section class="card">
+      ${res ? `
+        <h2><i class="ti ti-eye" aria-hidden="true"></i> Durum okuması</h2>
+        <p>${INTENT[res.niyet] ? `<span class="badge ${INTENT[res.niyet][1]}">${INTENT[res.niyet][0]}</span> ` : ''}${TEMPS[res.sicaklik] ? `<span class="badge ${TEMPS[res.sicaklik].cls}">${TEMPS[res.sicaklik].label}</span>` : ''}</p>
+        <p>${esc(res.analiz)}</p>
+        <h3>Önerilen cevaplar</h3>
+        ${(res.secenekler || []).map((o, i) => {
+          const f = checkMessage(o.mesaj);
+          return `<article class="reply-opt">
+            <header><strong>${esc(o.baslik || 'Seçenek ' + (i + 1))}</strong>${f.length ? '<span class="badge warn">Uyum uyarısı</span>' : '<span class="badge ok">Uyumlu</span>'}</header>
+            <p>${esc(o.mesaj)}</p>
+            <div class="quick"><button class="btn btn-ghost sm" data-ruse="${i}"><i class="ti ti-pencil" aria-hidden="true"></i> Düzenle ve gönder</button>
+              <button class="btn btn-ghost sm" data-rcopy="${i}"><i class="ti ti-copy" aria-hidden="true"></i> Kopyala</button></div></article>`;
+        }).join('')}
+        ${res.sonraki_adim ? `<div class="hint-box"><i class="ti ti-arrow-right-circle" aria-hidden="true"></i><span><strong>Sonraki adım:</strong> ${esc(res.sonraki_adim)}
+          ${res.takip_gun ? ` · Takip: ${res.takip_gun} gün sonra` : ''}</span></div>` : ''}
+        ${cp ? `<div class="quick" style="margin-top:12px">
+          <button class="btn btn-primary" data-act="r-save"><i class="ti ti-device-floppy" aria-hidden="true"></i> Durumu kaydet${res.takip_gun ? ' + takip planla' : ''}</button>
+          ${TEMPS[res.sicaklik] && res.sicaklik !== cp.temperature ? `<button class="btn btn-ghost" data-act="r-temp">Sıcaklığı "${TEMPS[res.sicaklik].label}" yap</button>` : ''}</div>` : ''}`
+      : `<div class="empty"><i class="ti ti-bulb" aria-hidden="true"></i><h2>Nasıl çalışır?</h2>
+        <p class="muted">Durumu anlat; AI adayın niyetini okur, görüşmeye yönlendiren 3 farklı cevap ve sonraki adımı önerir.
+        Cevaplar uyum kontrolünden geçer. Göndermeden önce mutlaka kendi cümlelerine göre düzenle.</p></div>`}
+    </section></div>`;
+}
+
+export function buildReplyPrompt({ goal, input, brief, history }) {
+  return `Sen deneyimli, etik bir network marketing sponsorusun. Distribütör bir adayla yazışıyor ve ne cevap vereceğini soruyor.
+${ETHICS}
+Amaç: ${GOALS[goal] || GOALS.auto}${goal === 'auto' ? ' (duruma en uygun olanı seç)' : ''}.
+Aday: ${brief || 'bilinmiyor'}
+${history ? 'Önceki temaslar:\n' + history : ''}
+Distribütörün anlattığı / adayın mesajı:
+«${input}»
+
+Yalnızca şu JSON ile cevap ver, başka metin yazma:
+{"analiz":"adayın gerçek kaygısı ve durumu, 2 cümle","niyet":"ilgili|kararsiz|itiraz|ilgisiz|belirsiz","sicaklik":"sicak|ilik|soguk","secenekler":[{"baslik":"kısa yaklaşım adı","mesaj":"gönderilecek mesaj"},{"baslik":"...","mesaj":"..."},{"baslik":"...","mesaj":"..."}],"sonraki_adim":"tek cümle","takip_gun":0}
+takip_gun 0-14 arası bir sayı olsun.`;
+}
+
+async function suggestReply(form) {
+  const r = state.reply;
+  r.input = form.elements.namedItem('input').value.trim();
+  r.goal = form.querySelector('[name="goal"]:checked')?.value || 'auto';
+  if (r.input.length < 10) { r.error = 'Durumu biraz daha ayrıntılı anlat (en az bir cümle).'; draw(); return; }
+  const p = currentProspect();
+  if (p && !ensureShareConsent()) return;
+  r.error = ''; r.busy = true; draw();
+  let history = '';
+  if (p) {
+    const { data } = await supabase.from('interactions').select('kind, summary, occurred_at').eq('prospect_id', p.id)
+      .order('occurred_at', { ascending: false }).limit(5);
+    history = (data || []).filter(x => x.summary).map(x => `- ${new Date(x.occurred_at).toLocaleDateString('tr-TR')} ${x.kind}: ${String(x.summary).slice(0, 160)}`).join('\n');
+  }
+  try {
+    const out = extractJSON(await aiChat({ maxTokens: 900, messages: [{ role: 'user', content:
+      buildReplyPrompt({ goal: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history }) }] }));
+    if (!Array.isArray(out.secenekler) || !out.secenekler.length) throw new Error('Öneri gelmedi, tekrar dene.');
+    out.secenekler = out.secenekler.slice(0, 3).map(o => ({ baslik: String(o.baslik || ''), mesaj: String(o.mesaj || '') }));
+    out.takip_gun = Math.max(0, Math.min(14, Math.round(+out.takip_gun || 0)));
+    r.result = out;
+  } catch (err) { r.error = 'AI: ' + err.message; }
+  r.busy = false; draw();
+}
+
+async function saveReplyState(btn) {
+  const p = currentProspect(); const res = state.reply.result;
+  if (!p || !res) return;
+  btn.disabled = true;
+  const { error } = await supabase.from('interactions').insert({ org_id: ctx.org.id, prospect_id: p.id, kind: 'not', summary: state.reply.input.slice(0, 280) });
+  if (error) { btn.disabled = false; toast(trError(error)); return; }
+  if (res.takip_gun) {
+    const { data } = await supabase.from('prospects').update({ next_follow_up_at: addDays(res.takip_gun).toISOString() }).eq('id', p.id).select().single();
+    if (data) state.prospects = state.prospects.map(x => (x.id === p.id ? { ...x, ...data } : x));
+  }
+  toast(`Kaydedildi${res.takip_gun ? `, takip ${res.takip_gun} gün sonra` : ''}.`);
+}
+
+async function setReplyTemp() {
+  const p = currentProspect(); const t = state.reply.result?.sicaklik;
+  const { data, error } = await supabase.from('prospects').update({ temperature: t }).eq('id', p.id).select().single();
+  if (error) { toast(trError(error)); return; }
+  state.prospects = state.prospects.map(x => (x.id === p.id ? { ...x, ...data } : x));
+  draw(); toast(`${firstName(p.full_name)}: ${TEMPS[t].label}`);
+}
+
+// ====================================================================
 // Pratik: AI ile rol yapma
 function viewPractice() {
-  const key = getApiKey();
+  const key = state.ai;
   const p = state.practice;
   if (!p) {
     return `<p class="small muted">Bir senaryo seç. Karşındaki kişiyi AI canlandırır; ${MAX_TURNS} mesaj sonra (ya da istediğinde) sponsor gözüyle geri bildirim alırsın.</p>
-      ${key ? '' : `<div class="card import-card"><i class="ti ti-key" aria-hidden="true"></i><div><strong>Pratik için Claude API anahtarı gerekiyor</strong>
-        <p class="small muted">Ayarlar'dan ekleyebilirsin; anahtar yalnızca bu cihazda saklanır. Anahtar olmadan da senaryoları okuyup İtiraz rehberiyle çalışabilirsin.</p></div>
+      ${key ? '' : `<div class="card import-card"><i class="ti ti-key" aria-hidden="true"></i><div><strong>Pratik için AI gerekiyor</strong>
+        <p class="small muted">Ayarlar → AI asistan bölümünden kurabilirsin. O zamana kadar senaryoları okuyup İtiraz rehberiyle çalışabilirsin.</p></div>
         <div class="import-actions"><a class="btn btn-gold" href="#/ayarlar">Ayarlara git</a></div></div>`}
       <div class="grid lib-grid">${SCENARIOS.map(sc => `<article class="card tpl-card">
         <header><h3><i class="ti ${sc.icon}" aria-hidden="true"></i> ${esc(sc.title)}</h3></header>
@@ -467,7 +564,7 @@ async function sendChat(form) {
   p.chat.push({ role: 'user', content: text }); p.busy = true; p.error = '';
   draw(); scrollChat();
   try {
-    const reply = await callClaude(getApiKey(), { system: systemPrompt(sc), messages: apiMessages(sc, p.chat), maxTokens: 200 });
+    const reply = await aiChat({ system: systemPrompt(sc), messages: apiMessages(sc, p.chat), maxTokens: 200 });
     p.chat.push({ role: 'assistant', content: reply });
   } catch (err) {
     p.chat.pop(); p.error = 'AI hatası: ' + err.message;
@@ -484,7 +581,7 @@ async function endPractice() {
   const sc = SCENARIOS.find(x => x.id === p.id);
   p.busy = true; draw();
   try {
-    p.feedback = await callClaude(getApiKey(), {
+    p.feedback = await aiChat({
       messages: [{ role: 'user', content: feedbackPrompt(sc, [{ role: 'assistant', content: sc.opener }, ...p.chat]) }], maxTokens: 700 });
   } catch (err) { p.error = 'Geri bildirim alınamadı: ' + err.message; }
   p.busy = false; draw(); scrollChat();

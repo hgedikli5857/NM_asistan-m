@@ -3,6 +3,7 @@ import { supabase } from '../supabase.js';
 import { esc, toast, trError, todayISO } from '../ui.js';
 import { PILLARS, pillarLabel, FORMATS, PLATFORMS, POST_STATUS, IDEAS } from '../pazarlama/content.js';
 import { checkMessage } from '../iletisim/uyum.js';
+import { aiChat, aiAvailable, ETHICS } from '../ai/client.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
@@ -32,6 +33,8 @@ export async function renderPazarlama(target, context) {
   el.addEventListener('click', onClick);
   el.addEventListener('input', onInput);
   el.addEventListener('submit', onSubmit);
+  // AI hazır mı? (diyalog açılmadan önce biliniyor olsun)
+  s.ai = await aiAvailable();
 
   const from = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
   const [posts, forms, webLeads] = await Promise.all([
@@ -113,10 +116,36 @@ function postDialog(p = null, preset = {}) {
     </div>
     <footer class="sheet-foot">
       ${p ? '<button type="button" class="btn btn-ghost" data-act="del-post" data-id="' + p.id + '">Sil</button>' : ''}
+      ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="ai-cap"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile yaz</button>' : ''}
       <button type="button" class="btn btn-ghost" data-act="copy-cap">Caption'ı kopyala</button>
       <button class="btn btn-primary" type="submit">Kaydet</button></footer></form>`;
   d.showModal();
   updateCheck();
+}
+
+async function aiCaption(btn) {
+  const form = btn.closest('form');
+  const f = n => form.elements.namedItem(n);
+  const topic = f('topic').value.trim();
+  const err = form.querySelector('#c-error');
+  if (!topic) { err.textContent = 'Önce konuyu yaz.'; f('topic').focus(); return; }
+  err.textContent = '';
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
+  const pillar = PILLARS.find(x => x.id === f('pillar').value);
+  try {
+    const text = await aiChat({ maxTokens: 600, messages: [{ role: 'user', content:
+      `${f('platform').value} için ${FORMATS[f('format').value]} caption'ı yaz.
+Konu: ${topic}
+İçerik sütunu: ${pillar?.label} (${pillar?.hint})
+Marka sesi: samimi ama profesyonel, gerçekçi, abartısız; sağlık ve kişisel gelişim alanında bir girişimci. Sloganlar: "Küçük ama istikrarlı adımlar", "Birlikte büyü" (her seferinde kullanma).
+${ETHICS} Satış çağrısı yapma; sonunda etkileşim sorusu olsun.
+${f('caption').value.trim() ? 'Mevcut taslağı geliştir:\n' + f('caption').value.trim() : ''}
+Kurallar: 60-120 kelime, en fazla 3 emoji, sonunda 5-8 Türkçe/İngilizce alakalı hashtag. Sadece caption metnini yaz.` }] });
+    f('caption').value = text.slice(0, 2200);
+    updateCheck();
+    toast('AI taslağı hazır; kendi sesine göre düzenle.');
+  } catch (e) { err.textContent = 'AI: ' + e.message; }
+  btn.disabled = false; btn.innerHTML = old;
 }
 
 function updateCheck() {
@@ -217,6 +246,7 @@ function onClick(e) {
     case 'edit-post': postDialog(s.posts.find(p => p.id === id)); break;
     case 'close': el.querySelector('#p-dialog').close(); break;
     case 'cycle': cycle(id); break;
+    case 'ai-cap': aiCaption(b); break;
     case 'copy-cap': navigator.clipboard.writeText(el.querySelector('#c-cap').value).then(() => toast('Caption kopyalandı.')); break;
     case 'del-post': delPost(b, id); break;
     case 'create-form': createForm(b); break;
