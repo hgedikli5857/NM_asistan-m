@@ -8,6 +8,7 @@ import { renderUnit } from './views/birim.js';
 import { renderSettings } from './views/ayarlar.js';
 import { renderKazanim } from './views/kazanim.js';
 import { renderIletisim } from './views/iletisim.js';
+import { renderOlcum } from './views/olcum.js';
 
 const root = document.getElementById('app');
 let ctx = null;          // { user, profile, membership, org }
@@ -16,11 +17,11 @@ let recoveryMode = false; // şifre sıfırlama bağlantısından gelindi mi?
 // ---------- Kabuk (menü + içerik alanı) ----------
 const NAV = [
   { id: '', title: 'Panel', icon: 'ti-layout-dashboard' },
-  ...UNITS.map(u => ({ id: u.id, title: u.title, icon: u.icon, phase: u.phase })),
+  ...UNITS.map(u => ({ id: u.id, title: u.title, short: u.short, icon: u.icon, phase: u.phase, live: u.live })),
   { id: 'ayarlar', title: 'Ayarlar', icon: 'ti-settings' }
 ];
 // Mobil alt çubukta 5 sekme sığar
-const MOBILE_NAV = ['', 'kazanim', 'iletisim', 'ekip', 'ayarlar'];
+const MOBILE_NAV = ['', 'kazanim', 'iletisim', 'olcum', 'ayarlar'];
 
 function renderShell() {
   const name = ctx.profile?.full_name || ctx.user.email;
@@ -34,7 +35,7 @@ function renderShell() {
         <nav>
           ${NAV.map(n => `<a class="nav-link" href="#/${n.id}" data-route="${n.id}">
             <i class="ti ${n.icon}" aria-hidden="true"></i>${esc(n.title)}
-            ${n.phase ? `<span class="pill">F${n.phase}</span>` : ''}</a>`).join('')}
+            ${n.phase && !n.live ? `<span class="pill">F${n.phase}</span>` : ''}</a>`).join('')}
         </nav>
         <div class="spacer"></div>
         <div class="user"><div class="name">${esc(name)}</div>
@@ -50,7 +51,7 @@ function renderShell() {
 
       <nav class="bottombar" aria-label="Alt menü">
         ${MOBILE_NAV.map(id => NAV.find(n => n.id === id)).map(n => `
-          <a href="#/${n.id}" data-route="${n.id}"><i class="ti ${n.icon}" aria-hidden="true"></i>${esc(n.title)}</a>`).join('')}
+          <a href="#/${n.id}" data-route="${n.id}"><i class="ti ${n.icon}" aria-hidden="true"></i>${esc(n.short || n.title)}</a>`).join('')}
       </nav>
     </div>`;
 }
@@ -81,6 +82,7 @@ async function route() {
     else if (id === 'ayarlar') renderSettings(page, ctx, { recovery: recoveryMode });
     else if (id === 'kazanim') await renderKazanim(page, ctx);
     else if (id === 'iletisim') await renderIletisim(page, ctx);
+    else if (id === 'olcum') await renderOlcum(page, ctx);
     else renderUnit(page, id);
   } catch (err) {
     console.error(err);

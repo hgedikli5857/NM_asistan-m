@@ -34,7 +34,7 @@ export async function renderPanel(el, ctx) {
       ${statCard('Bu hafta yeni', '–', 'Son 7 günde eklenen aday')}
     </section>
 
-    <div class="section-title"><h2>Departman birimleri</h2><span class="small muted">Faz 1 · yapımda</span></div>
+    <div class="section-title"><h2>Departman birimleri</h2><span class="small muted">Faz 1 tamam</span></div>
     <section class="grid grid-units" aria-label="Birimler">
       ${UNITS.map(u => `
         <a class="card unit ${u.group === 'grow' ? 'grow' : ''}" href="#/${u.id}">

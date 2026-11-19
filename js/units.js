@@ -54,7 +54,7 @@ export const UNITS = [
     ]
   },
   {
-    id: 'olcum', title: 'Ölçüm ve uyum', icon: 'ti-chart-histogram', group: 'team', phase: 1,
+    id: 'olcum', title: 'Ölçüm ve uyum', short: 'Ölçüm', icon: 'ti-chart-histogram', group: 'team', phase: 1, live: true,
     summary: 'KPI paneli, haftalık hesap verme, KVKK ve İYS.',
     features: [
       'Günlük öncü göstergeler: temas, davet, takip, sunum',
