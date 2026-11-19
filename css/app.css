@@ -271,3 +271,47 @@ dialog.sheet form { display: contents; }
 @media (max-width: 860px) {
   #toast { bottom: calc(var(--bottombar-h) + 16px + env(safe-area-inset-bottom)); }
 }
+
+/* ===================== İletişim ===================== */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.compose { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px; align-items: start; }
+.compose-editor { position: sticky; top: 16px; }
+.tpl-list { display: grid; gap: 8px; margin-top: 12px; max-height: 520px; overflow-y: auto; padding-right: 2px; }
+.tpl { display: grid; gap: 3px; text-align: left; border: 1px solid var(--border); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.tpl:hover { border-color: var(--gold-500); }
+.tpl-title { font-weight: 600; }
+.tpl-meta { font-size: .75rem; color: var(--gold-600); }
+.tpl-body { font-size: .85rem; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.check-box { border-radius: 10px; padding: 10px 12px; font-size: .875rem; margin-bottom: 12px; }
+.check-box p { margin: 0 0 6px; } .check-box p:last-child { margin: 0; }
+.check-box.ok { background: #E1F2EA; color: var(--success); display: flex; gap: 8px; align-items: center; }
+.check-box.warn { background: #FBEFD9; color: #6E4A0E; border: 1px solid #EBCB8B; }
+.lib-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.tpl-card { display: flex; flex-direction: column; gap: 6px; }
+.tpl-card header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.tpl-card h3 { margin: 0; }
+.tpl-text { flex: 1; font-size: .92rem; white-space: pre-wrap; }
+.tpl-card footer { display: flex; gap: 6px; align-items: center; }
+.tpl-card footer .btn { margin-right: auto; }
+.obj-list { display: grid; gap: 10px; }
+.obj summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.obj summary::-webkit-details-marker { display: none; }
+.obj[open] summary i { transform: rotate(180deg); }
+.obj summary i { transition: transform .15s; color: var(--gold-600); }
+.obj[open] summary { margin-bottom: 10px; }
+.obj ol { margin: 8px 0 12px; padding-left: 20px; }
+.obj blockquote { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--gold-500); background: var(--surface-2); border-radius: 0; font-size: .92rem; }
+@media (max-width: 860px) {
+  .compose { grid-template-columns: 1fr; }
+  .compose-editor { position: static; }
+  .tpl-list { max-height: none; }
+}
+@media (prefers-color-scheme: dark) {
+  .check-box.ok { background: #16372A; }
+  .check-box.warn { background: #3A2F17; color: #F0C98A; border-color: #6E4A0E; }
+}
+@media (max-width: 860px) {
+  .seg { display: flex; width: 100%; }
+  .seg button { flex: 1; justify-content: center; padding: 8px 6px; font-size: .9rem; }
+  .seg button i { display: none; }
+}

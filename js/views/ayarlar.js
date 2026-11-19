@@ -2,6 +2,7 @@
 import { supabase } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
+import { AI_KEY, getApiKey } from './iletisim.js';
 
 export function renderSettings(el, ctx, { recovery = false } = {}) {
   const p = ctx.profile || {};
@@ -28,6 +29,20 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
           <input id="n-pass" name="password" type="password" minlength="6" autocomplete="new-password"></div>
         <p class="error" id="pass-error" role="alert"></p>
         <button class="btn btn-primary" type="submit">Şifreyi güncelle</button>
+      </form>
+
+      <form class="card" id="ai-form" novalidate>
+        <h2>AI asistan (isteğe bağlı)</h2>
+        <p class="small muted">İletişim biriminde mesajları kişiselleştirmek için kendi Claude API anahtarını ekleyebilirsin.
+          Anahtar <strong>yalnızca bu cihazın tarayıcısında</strong> saklanır, sunucuya gönderilmez.
+          Kullanım ücreti API hesabına yansır.</p>
+        <div class="field"><label for="ai-key">Claude API anahtarı</label>
+          <input id="ai-key" name="key" type="password" autocomplete="off" placeholder="${getApiKey() ? 'Kayıtlı (değiştirmek için yeni anahtar gir)' : 'sk-ant-…'}"></div>
+        <p class="error" id="ai-error" role="alert"></p>
+        <div class="quick">
+          <button class="btn btn-primary" type="submit">Kaydet</button>
+          ${getApiKey() ? '<button class="btn btn-ghost" type="button" id="ai-remove">Anahtarı sil</button>' : ''}
+        </div>
       </form>
 
       <section class="card">
@@ -66,6 +81,23 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
     if (error) { err.textContent = trError(error); return; }
     e.currentTarget.reset();
     toast('Şifren güncellendi.');
+  });
+
+  el.querySelector('#ai-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const key = e.currentTarget.elements.namedItem('key').value.trim();
+    const err = el.querySelector('#ai-error');
+    if (!/^sk-ant-[\w-]{20,}$/.test(key)) { err.textContent = 'Geçerli bir anahtar gir (sk-ant- ile başlar).'; return; }
+    err.textContent = '';
+    localStorage.setItem(AI_KEY, key);
+    toast('API anahtarı bu cihaza kaydedildi.');
+    renderSettings(el, ctx);
+  });
+  el.querySelector('#ai-remove')?.addEventListener('click', () => {
+    localStorage.removeItem(AI_KEY);
+    localStorage.removeItem('nma_api_key');
+    toast('API anahtarı silindi.');
+    renderSettings(el, ctx);
   });
 
   el.querySelector('#logout').addEventListener('click', () => supabase.auth.signOut());

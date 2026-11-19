@@ -7,6 +7,7 @@ import { renderPanel } from './views/panel.js';
 import { renderUnit } from './views/birim.js';
 import { renderSettings } from './views/ayarlar.js';
 import { renderKazanim } from './views/kazanim.js';
+import { renderIletisim } from './views/iletisim.js';
 
 const root = document.getElementById('app');
 let ctx = null;          // { user, profile, membership, org }
@@ -79,6 +80,7 @@ async function route() {
     if (id === '') await renderPanel(page, ctx);
     else if (id === 'ayarlar') renderSettings(page, ctx, { recovery: recoveryMode });
     else if (id === 'kazanim') await renderKazanim(page, ctx);
+    else if (id === 'iletisim') await renderIletisim(page, ctx);
     else renderUnit(page, id);
   } catch (err) {
     console.error(err);

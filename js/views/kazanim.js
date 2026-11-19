@@ -299,6 +299,7 @@ async function detailDialog(id) {
         ${wa ? `<a class="btn btn-ghost" href="https://wa.me/${wa}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp</a>` : ''}
         ${p.phone ? `<a class="btn btn-ghost" href="tel:${esc(p.phone.replace(/\s/g, ''))}"><i class="ti ti-phone" aria-hidden="true"></i> Ara</a>` : ''}
         ${p.instagram ? `<a class="btn btn-ghost" href="https://instagram.com/${esc(p.instagram.replace(/^@/, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram</a>` : ''}
+        <a class="btn btn-ghost" href="#/iletisim?aday=${p.id}"><i class="ti ti-message-2" aria-hidden="true"></i> Mesaj yaz</a>
         <button class="btn btn-ghost" data-act="edit" data-id="${p.id}"><i class="ti ti-pencil" aria-hidden="true"></i> Düzenle</button>
       </div>
 

@@ -13,7 +13,7 @@ export const UNITS = [
     ]
   },
   {
-    id: 'iletisim', title: 'İletişim', icon: 'ti-message-chatbot', group: 'grow', phase: 1,
+    id: 'iletisim', title: 'İletişim', icon: 'ti-message-chatbot', group: 'grow', phase: 1, live: true,
     summary: 'Mesaj şablonları, itiraz rehberi ve AI koç.',
     features: [
       'Kanal ve amaca göre WhatsApp / DM şablonları',
