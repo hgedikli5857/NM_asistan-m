@@ -4,11 +4,13 @@ import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
 import { checkMessage, fillTemplate } from '../iletisim/uyum.js';
 import { CHANNELS, waNumber, addDays, stageLabel } from '../kazanim/model.js';
+import { SCENARIOS, MAX_TURNS, systemPrompt, feedbackPrompt, callClaude, apiMessages } from '../iletisim/pratik.js';
 
 const TABS = [
   { id: 'yaz', label: 'Mesaj yaz', icon: 'ti-pencil' },
   { id: 'sablon', label: 'Şablonlar', icon: 'ti-template' },
-  { id: 'itiraz', label: 'İtiraz rehberi', icon: 'ti-shield-question' }
+  { id: 'itiraz', label: 'İtiraz rehberi', icon: 'ti-shield-question' },
+  { id: 'pratik', label: 'Pratik', icon: 'ti-messages' }
 ];
 export const AI_KEY = 'nmd_anthropic_key';
 const LEGACY_AI_KEY = 'nma_api_key';
@@ -64,7 +66,7 @@ const currentProspect = () => state.prospects.find(p => p.id === state.prospectI
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === state.tab));
   const body = el.querySelector('#i-body');
-  body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : viewObjections();
+  body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : viewObjections();
   if (state.tab === 'yaz') renderCheck();
 }
 
@@ -246,6 +248,9 @@ function onClick(e) {
     case 'edit-tpl': templateDialog(state.mine.find(x => x.id === b.dataset.id)); break;
     case 'del-tpl': deleteTemplate(b); break;
     case 'close': el.querySelector('#i-dialog').close(); break;
+    case 'sc-start': startPractice(b.dataset.id); break;
+    case 'sc-end': endPractice(b); break;
+    case 'sc-reset': state.practice = null; draw(); break;
   }
 }
 
@@ -331,6 +336,7 @@ async function deleteTemplate(btn) {
 async function onSubmit(e) {
   e.preventDefault();
   const form = e.target;
+  if (form.dataset.form === 'chat') return sendChat(form);
   if (form.dataset.form !== 'tpl') return;
   const f = n => form.elements.namedItem(n);
   const err = form.querySelector('#t-error');
@@ -406,3 +412,84 @@ ${draft}`;
     btn.disabled = false; btn.innerHTML = old;
   }
 }
+
+// ====================================================================
+// Pratik: AI ile rol yapma
+function viewPractice() {
+  const key = getApiKey();
+  const p = state.practice;
+  if (!p) {
+    return `<p class="small muted">Bir senaryo seç. Karşındaki kişiyi AI canlandırır; ${MAX_TURNS} mesaj sonra (ya da istediğinde) sponsor gözüyle geri bildirim alırsın.</p>
+      ${key ? '' : `<div class="card import-card"><i class="ti ti-key" aria-hidden="true"></i><div><strong>Pratik için Claude API anahtarı gerekiyor</strong>
+        <p class="small muted">Ayarlar'dan ekleyebilirsin; anahtar yalnızca bu cihazda saklanır. Anahtar olmadan da senaryoları okuyup İtiraz rehberiyle çalışabilirsin.</p></div>
+        <div class="import-actions"><a class="btn btn-gold" href="#/ayarlar">Ayarlara git</a></div></div>`}
+      <div class="grid lib-grid">${SCENARIOS.map(sc => `<article class="card tpl-card">
+        <header><h3><i class="ti ${sc.icon}" aria-hidden="true"></i> ${esc(sc.title)}</h3></header>
+        <p class="small muted">${esc(sc.persona)}</p>
+        <blockquote class="opener">"${esc(sc.opener)}"</blockquote>
+        <footer><button class="btn ${key ? 'btn-primary' : 'btn-ghost'}" data-act="sc-start" data-id="${sc.id}" ${key ? '' : 'disabled'}>
+          <i class="ti ti-player-play" aria-hidden="true"></i> Başla</button></footer></article>`).join('')}</div>`;
+  }
+  const sc = SCENARIOS.find(x => x.id === p.id);
+  const turns = p.chat.filter(m => m.role === 'user').length;
+  return `<section class="card chat-card">
+    <header class="chat-head"><div><strong>${esc(sc.title)}</strong><span class="small muted"> · ${turns}/${MAX_TURNS} mesaj</span></div>
+      <button class="btn btn-ghost sm" data-act="sc-reset">Senaryolar</button></header>
+    <div class="chat" id="chat">
+      <div class="msg them">${esc(sc.opener)}</div>
+      ${p.chat.map(m => `<div class="msg ${m.role === 'user' ? 'me' : 'them'}">${esc(m.content)}</div>`).join('')}
+      ${p.busy ? '<div class="msg them typing">yazıyor…</div>' : ''}
+    </div>
+    ${p.feedback ? `<div class="feedback">${esc(p.feedback).replace(/\n/g, '<br>')}</div>
+      <div class="quick"><button class="btn btn-primary" data-act="sc-start" data-id="${sc.id}">Tekrar dene</button>
+      <button class="btn btn-ghost" data-act="sc-reset">Başka senaryo</button></div>` : `
+    <form data-form="chat" class="inline-form" novalidate>
+      <input name="msg" placeholder="Cevabını yaz…" aria-label="Mesajın" maxlength="600" ${p.busy || turns >= MAX_TURNS ? 'disabled' : ''} autocomplete="off">
+      <button class="btn btn-primary" type="submit" ${p.busy || turns >= MAX_TURNS ? 'disabled' : ''}>Gönder</button>
+    </form>
+    <div id="i-check"></div>
+    <button class="btn btn-gold" data-act="sc-end" ${p.busy || !turns ? 'disabled' : ''} style="margin-top:10px">
+      <i class="ti ti-clipboard-check" aria-hidden="true"></i> Bitir ve geri bildirim al</button>`}
+    <p class="error" id="chat-err" role="alert">${esc(p.error || '')}</p>
+  </section>`;
+}
+
+function startPractice(id) {
+  state.practice = { id, chat: [], busy: false, feedback: '', error: '' };
+  draw();
+  el.querySelector('[name="msg"]')?.focus();
+}
+
+async function sendChat(form) {
+  const p = state.practice;
+  const input = form.elements.namedItem('msg');
+  const text = input.value.trim();
+  if (!text) { p.error = 'Bir şey yaz.'; draw(); return; }
+  const sc = SCENARIOS.find(x => x.id === p.id);
+  p.chat.push({ role: 'user', content: text }); p.busy = true; p.error = '';
+  draw(); scrollChat();
+  try {
+    const reply = await callClaude(getApiKey(), { system: systemPrompt(sc), messages: apiMessages(sc, p.chat), maxTokens: 200 });
+    p.chat.push({ role: 'assistant', content: reply });
+  } catch (err) {
+    p.chat.pop(); p.error = 'AI hatası: ' + err.message;
+  }
+  p.busy = false;
+  draw(); scrollChat();
+  if (p.chat.filter(m => m.role === 'user').length >= MAX_TURNS) endPractice();
+  else el.querySelector('[name="msg"]')?.focus();
+}
+
+async function endPractice() {
+  const p = state.practice;
+  if (!p || p.busy || !p.chat.length) return;
+  const sc = SCENARIOS.find(x => x.id === p.id);
+  p.busy = true; draw();
+  try {
+    p.feedback = await callClaude(getApiKey(), {
+      messages: [{ role: 'user', content: feedbackPrompt(sc, [{ role: 'assistant', content: sc.opener }, ...p.chat]) }], maxTokens: 700 });
+  } catch (err) { p.error = 'Geri bildirim alınamadı: ' + err.message; }
+  p.busy = false; draw(); scrollChat();
+}
+
+function scrollChat() { const c = el.querySelector('#chat'); if (c) c.scrollTop = c.scrollHeight; }

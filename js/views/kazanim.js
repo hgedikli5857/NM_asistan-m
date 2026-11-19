@@ -51,7 +51,7 @@ export async function renderKazanim(target, context) {
 
 async function reload() {
   const [p, t] = await Promise.all([
-    supabase.from('prospects').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(2000),
+    supabase.from('prospects').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(10000),
     supabase.from('tasks').select('*').lte('due_date', todayISO()).order('created_at')
   ]);
   if (p.error) throw p.error;

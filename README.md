@@ -7,14 +7,28 @@ One More International ekibi için network marketing operasyon merkezi. Telefona
 
 ## Birimler
 
-| Birim | İçerik | Faz |
-|---|---|---|
-| Kazanım | Aday listesi, satış hunisi, günlük aksiyon | 1 |
-| İletişim | Mesaj şablonları, itiraz rehberi, AI koç | 1 |
-| Ölçüm ve uyum | KPI paneli, hesap verme, KVKK / İYS | 1 |
-| Ekip | Soy ağacı, aktiflik, randevu | 2 |
-| Akademi | 90 günlük onboarding, dersler, rozetler | 2 |
-| Pazarlama | İçerik takvimi, Instagram, aday formu | 3 |
+| Birim | İçerik |
+|---|---|
+| Kazanım | Bugün listesi, aday listesi, satış hunisi, aday kartı, eski uygulamadan içe aktarma |
+| İletişim | Mesaj yaz, 21 uyumlu şablon, 12 itiraz yanıtı, canlı uyum kontrolü, AI rol yapma pratiği |
+| Pazarlama | İçerik takvimi ve denge, caption fikirleri, web sitesi aday formu (`form.html`), Instagram'dan aday |
+| Ekip | Davet linki, üyeler ve aktiflik, soy ağacı, takvim ve ekip etkinlikleri, sıralama, rol yönetimi |
+| Akademi | İlk 14 gün listesi, 90 günlük program (15 ders + quiz), 15 rozet |
+| Ölçüm ve uyum | Göstergeler ve hedefler, haftalık hesap verme, gelir takibi, KVKK kapsamı ve kalıcı silme |
+
+Ayarlar: profil, şifre, AI anahtarı (yalnızca tarayıcıda), ekip adı, verileri dışa aktarma (JSON/CSV).
+
+## Gizlilik ilkeleri
+
+- Aday verisi yalnızca kaydı oluşturan kişiye görünür (RLS). Liderler ekip özetinde yalnızca toplu sayıları görür.
+- Sağlık, gelir gibi hassas aday bilgileri eski uygulamadan taşınmaz.
+- Herkese açık uç noktalar: `lead_form_info`, `submit_lead` (KVKK onayı, bot tuzağı, saatlik limit).
+
+## Testler
+
+```bash
+for f in tests/*.test.mjs; do node "$f"; done
+```
 
 ## Teknik yapı
 

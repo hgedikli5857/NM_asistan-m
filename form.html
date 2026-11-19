@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>İletişim formu</title>
+  <meta name="robots" content="noindex">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.55; }
+    main { max-width: 480px; margin: 0 auto; padding: 24px 18px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+    h1 { font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; margin: 0 0 6px; }
+    .muted { color: var(--text-muted); font-size: .92rem; }
+    label { display: block; font-size: .875rem; font-weight: 500; margin: 14px 0 6px; }
+    input, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: var(--surface); color: inherit; }
+    input:focus, textarea:focus { outline: none; border-color: var(--gold-500); box-shadow: 0 0 0 3px var(--gold-100); }
+    .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; font-size: .85rem; }
+    .check input { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; }
+    .kvkk { font-size: .78rem; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-top: 12px; }
+    button { width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 8px; background: var(--navy-800); color: #fff; font: inherit; font-weight: 500; cursor: pointer; }
+    button[disabled] { opacity: .6; }
+    .error { color: var(--danger); font-size: .875rem; min-height: 1.2em; margin: 10px 0 0; }
+    .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    .done { text-align: center; padding: 24px 6px; }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .mark { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--navy-800); color: var(--gold-500); font-family: var(--font-display); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="card" id="box"><p class="muted">Yükleniyor…</p></div>
+</main>
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { SUPABASE_URL, SUPABASE_KEY } from './js/config.js';
+
+  const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+  const box = document.getElementById('box');
+  const key = new URLSearchParams(location.search).get('k') || '';
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const { data, error } = await sb.rpc('lead_form_info', { p_key: key });
+  const info = data && data[0];
+  if (error || !info) {
+    box.innerHTML = '<h1>Form bulunamadı</h1><p class="muted">Bu form artık yayında değil.</p>';
+  } else {
+    const owner = esc(info.owner_name || 'Form sahibi');
+    box.innerHTML = `
+      <div class="brand"><div class="mark" aria-hidden="true">NM</div><strong>${owner}</strong></div>
+      <h1>${esc(info.title)}</h1>
+      ${info.intro ? `<p class="muted">${esc(info.intro)}</p>` : ''}
+      <form id="f" novalidate>
+        <label for="name">Ad soyad *</label><input id="name" name="name" autocomplete="name" maxlength="120" required>
+        <label for="phone">Telefon *</label><input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="05xx xxx xx xx" required>
+        <label for="msg">Mesajın (isteğe bağlı)</label><textarea id="msg" name="msg" rows="3" maxlength="1000"></textarea>
+        <div class="hp" aria-hidden="true"><label for="website">Web sitesi</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
+        <div class="kvkk">Aydınlatma metni: Paylaştığın ad, telefon ve mesaj bilgilerin, yalnızca seninle iletişime geçmek amacıyla
+          ${owner} tarafından işlenir ve üçüncü kişilerle paylaşılmaz. Dilediğin zaman bilgilerinin silinmesini isteyebilirsin.</div>
+        <label class="check"><input type="checkbox" id="consent" name="consent">
+          <span>Aydınlatma metnini okudum; benimle telefon veya WhatsApp üzerinden iletişime geçilmesine izin veriyorum.</span></label>
+        <p class="error" id="err" role="alert"></p>
+        <button type="submit" id="send">Gönder</button>
+      </form>`;
+    document.getElementById('f').addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.currentTarget, err = document.getElementById('err'), btn = document.getElementById('send');
+      const name = f.elements.namedItem('name').value.trim();
+      const phone = f.elements.namedItem('phone').value.trim();
+      if (name.length < 2) { err.textContent = 'Adını yaz.'; return; }
+      if (phone.replace(/\D/g, '').length < 10) { err.textContent = 'Geçerli bir telefon numarası yaz.'; return; }
+      if (!f.elements.namedItem('consent').checked) { err.textContent = 'Devam etmek için iletişim iznini onayla.'; return; }
+      err.textContent = ''; btn.disabled = true; btn.textContent = 'Gönderiliyor…';
+      const { error: e2 } = await sb.rpc('submit_lead', { p_key: key, p_name: name, p_phone: phone,
+        p_message: f.elements.namedItem('msg').value, p_consent: true, p_hp: f.elements.namedItem('website').value });
+      if (e2) { err.textContent = e2.message || 'Gönderilemedi, tekrar dene.'; btn.disabled = false; btn.textContent = 'Gönder'; return; }
+      box.innerHTML = `<div class="done"><h1>Teşekkürler!</h1><p class="muted">Bilgilerin iletildi. ${owner} en kısa sürede seninle iletişime geçecek.</p></div>`;
+    });
+  }
+</script>
+</body>
+</html>

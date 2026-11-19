@@ -20,11 +20,11 @@ export const UNITS = [
       'İtiraz rehberi: "Vaktim yok", "Param yok", "Piramit mi?"',
       'AI ile kişiye özel mesaj üretimi',
       'Yasaklı ifade uyarısı (sağlık iddiası, kazanç vaadi)',
-      'AI rol yapma pratiği (Faz 3)'
+      'AI rol yapma pratiği (6 senaryo, sponsor geri bildirimi)'
     ]
   },
   {
-    id: 'pazarlama', title: 'Pazarlama', icon: 'ti-speakerphone', group: 'grow', phase: 3,
+    id: 'pazarlama', title: 'Pazarlama', icon: 'ti-speakerphone', group: 'grow', phase: 3, live: true,
     summary: 'İçerik takvimi, Instagram ve aday toplama sayfası.',
     features: [
       'Haftalık içerik takvimi ve hazır caption',
@@ -34,7 +34,7 @@ export const UNITS = [
     ]
   },
   {
-    id: 'ekip', title: 'Ekip', icon: 'ti-users-group', group: 'team', phase: 2,
+    id: 'ekip', title: 'Ekip', icon: 'ti-users-group', group: 'team', phase: 2, live: true,
     summary: 'Soy ağacı, aktiflik takibi, randevu ve etkinlik.',
     features: [
       'Ekip üyesi daveti ve rol yönetimi (sahip / lider / üye)',
@@ -44,7 +44,7 @@ export const UNITS = [
     ]
   },
   {
-    id: 'akademi', title: 'Akademi', icon: 'ti-school', group: 'team', phase: 2,
+    id: 'akademi', title: 'Akademi', icon: 'ti-school', group: 'team', phase: 2, live: true,
     summary: '90 günlük başlangıç programı, dersler ve rozetler.',
     features: [
       '"İlk 14 gün" kontrol listesi',

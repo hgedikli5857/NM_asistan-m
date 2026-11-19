@@ -6,18 +6,30 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
-// Oturumdaki kullanıcının profilini ve ekibini (organizasyon) birlikte getirir.
+export const ACTIVE_ORG_KEY = 'nmd_active_org';
+
+// Oturumdaki kullanıcının profilini, tüm ekiplerini ve aktif ekibini getirir.
 export async function loadContext() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
   const [{ data: profile }, { data: memberships, error }] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-    supabase.from('memberships').select('role, status, org:organizations(id, name, plan)').eq('user_id', user.id)
+    supabase.from('memberships')
+      .select('role, status, sponsor_user_id, joined_at, org:organizations(id, name, plan, owner_id, created_at)')
+      .eq('user_id', user.id)
   ]);
   if (error) throw error;
 
-  // Şimdilik ilk aktif ekip seçilir; çok ekipli seçim Faz 4'te eklenecek.
-  const active = (memberships || []).find(m => m.status !== 'left') || null;
-  return { user, profile, membership: active, org: active?.org || null };
+  const list = (memberships || []).filter(m => m.status !== 'left' && m.org);
+  const saved = localStorage.getItem(ACTIVE_ORG_KEY);
+  // Kayıtlı seçim yoksa: kendi kurduğun ekip
+  const active = list.find(m => m.org.id === saved) || list.find(m => m.role === 'owner') || list[0] || null;
+  return { user, profile, memberships: list, membership: active, org: active?.org || null };
 }
+
+export function setActiveOrg(orgId) {
+  localStorage.setItem(ACTIVE_ORG_KEY, orgId);
+}
+
+export const isLead = ctx => ['owner', 'leader'].includes(ctx?.membership?.role);
