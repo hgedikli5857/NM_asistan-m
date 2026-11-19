@@ -2,7 +2,7 @@
 // group: 'grow' = aday ve büyüme, 'team' = ekip ve sistem
 export const UNITS = [
   {
-    id: 'kazanim', title: 'Kazanım', icon: 'ti-target-arrow', group: 'grow', phase: 1,
+    id: 'kazanim', title: 'Kazanım', icon: 'ti-target-arrow', group: 'grow', phase: 1, live: true,
     summary: 'Aday listesi, satış hunisi ve günlük aksiyon.',
     features: [
       'Sıcak liste ve aday kartları (sıcak / ılık / soğuk)',

@@ -30,18 +30,19 @@ export async function renderPanel(el, ctx) {
     <section aria-label="Bugünün özeti" class="grid grid-stats" id="stats">
       ${statCard('Toplam aday', '–', 'Kazanım birimindeki kayıtlar')}
       ${statCard('Bugünkü görevler', '–', 'Tamamlanan / toplam')}
-      ${statCard('Bugün takip', '–', 'Takip tarihi bugün olanlar')}
+      ${statCard('Bugün takip', '–', 'Bugün ve gecikmiş takipler')}
       ${statCard('Bu hafta yeni', '–', 'Son 7 günde eklenen aday')}
     </section>
 
-    <div class="section-title"><h2>Departman birimleri</h2><span class="small muted">Faz 0 · iskelet</span></div>
+    <div class="section-title"><h2>Departman birimleri</h2><span class="small muted">Faz 1 · yapımda</span></div>
     <section class="grid grid-units" aria-label="Birimler">
       ${UNITS.map(u => `
         <a class="card unit ${u.group === 'grow' ? 'grow' : ''}" href="#/${u.id}">
           <div class="icon"><i class="ti ${u.icon}" aria-hidden="true"></i></div>
           <h3>${esc(u.title)}</h3>
           <p>${esc(u.summary)}</p>
-          <div><span class="badge ${u.phase === 1 ? 'gold' : ''}">Faz ${u.phase}'de açılıyor</span></div>
+          <div>${u.live ? '<span class="badge ok">Aktif</span>'
+            : `<span class="badge ${u.phase === 1 ? 'gold' : ''}">Faz ${u.phase}'de açılıyor</span>`}</div>
         </a>`).join('')}
     </section>`;
 

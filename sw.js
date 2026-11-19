@@ -1,10 +1,10 @@
 // Basit çevrimdışı önbellek: uygulama dosyaları önbellekten, veri her zaman internetten.
-const CACHE = 'nm-departmani-v0.1.0';
+const CACHE = 'nm-departmani-v0.2.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './icons/icon.svg',
   './css/tokens.css', './css/app.css',
   './js/app.js', './js/config.js', './js/supabase.js', './js/ui.js', './js/units.js',
-  './js/views/giris.js', './js/views/panel.js', './js/views/birim.js', './js/views/ayarlar.js'
+  './js/views/giris.js', './js/views/panel.js', './js/views/birim.js', './js/views/ayarlar.js', './js/views/kazanim.js', './js/kazanim/model.js'
 ];
 
 self.addEventListener('install', e => {

@@ -6,6 +6,7 @@ import { renderAuth } from './views/giris.js';
 import { renderPanel } from './views/panel.js';
 import { renderUnit } from './views/birim.js';
 import { renderSettings } from './views/ayarlar.js';
+import { renderKazanim } from './views/kazanim.js';
 
 const root = document.getElementById('app');
 let ctx = null;          // { user, profile, membership, org }
@@ -69,13 +70,19 @@ async function route() {
     else a.removeAttribute('aria-current');
   });
 
+  // Her sayfa yeni bir kapta çizilir; eski sayfanın olay dinleyicileri onunla birlikte silinir
+  view.innerHTML = '';
+  const page = document.createElement('div');
+  view.append(page);
+
   try {
-    if (id === '') await renderPanel(view, ctx);
-    else if (id === 'ayarlar') renderSettings(view, ctx, { recovery: recoveryMode });
-    else renderUnit(view, id);
+    if (id === '') await renderPanel(page, ctx);
+    else if (id === 'ayarlar') renderSettings(page, ctx, { recovery: recoveryMode });
+    else if (id === 'kazanim') await renderKazanim(page, ctx);
+    else renderUnit(page, id);
   } catch (err) {
     console.error(err);
-    view.innerHTML = `<div class="card empty"><i class="ti ti-alert-triangle" aria-hidden="true"></i>
+    page.innerHTML = `<div class="card empty"><i class="ti ti-alert-triangle" aria-hidden="true"></i>
       <h2>Sayfa yüklenemedi</h2><p class="muted">${esc(trError(err))}</p></div>`;
   }
   recoveryMode = false;
