@@ -3,6 +3,7 @@ import { supabase, isLead } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { relativeDay } from '../kazanim/model.js';
 import { buildTree } from '../ekip/tree.js';
+import { pickerHTML, bindPicker } from '../ui/picker.js';
 
 const KINDS = { sunum: 'Sunum', birebir: 'Birebir görüşme', egitim: 'Eğitim', etkinlik: 'Etkinlik', diger: 'Diğer' };
 const STATUS = { planli: 'Planlı', yapildi: 'Yapıldı', gelmedi: 'Gelmedi', iptal: 'İptal' };
@@ -48,7 +49,7 @@ async function load() {
   const [team, appts, prospects, invites] = await Promise.all([
     supabase.rpc('team_overview', { p_org: ctx.org.id }),
     supabase.from('appointments').select('*').gte('starts_at', from).order('starts_at').limit(300),
-    supabase.from('prospects').select('id, full_name').is('deleted_at', null).order('full_name').limit(5000),
+    supabase.from('prospects').select('id, full_name, phone, instagram').is('deleted_at', null).order('full_name').limit(5000),
     s.lead ? supabase.from('invitations').select('*').eq('org_id', ctx.org.id).order('created_at', { ascending: false }).limit(50)
       : Promise.resolve({ data: [] })
   ]);
@@ -204,8 +205,7 @@ function apptDialog(teamEvent = false) {
       </div>
       <div class="form-2">
         <div class="field"><label for="a-dur">Süre (dk)</label><input id="a-dur" name="duration" type="number" min="5" max="1440" value="${teamEvent ? 60 : 45}"></div>
-        ${teamEvent ? '' : `<div class="field"><label for="a-pros">Aday</label><select id="a-pros" name="prospect"><option value="">Seç (isteğe bağlı)</option>
-          ${s.prospects.map(p => `<option value="${p.id}">${esc(p.full_name)}</option>`).join('')}</select></div>`}
+        ${teamEvent ? '' : `<div class="field">${pickerHTML({ id: 'a-pick', label: 'Aday (isteğe bağlı)', prospects: s.prospects, name: 'prospect' })}</div>`}
       </div>
       <div class="field"><label for="a-loc">Yer ya da bağlantı</label><input id="a-loc" name="location" placeholder="Ör. Zoom linki veya adres"></div>
       <div class="field"><label for="a-notes">Not</label><textarea id="a-notes" name="notes" rows="2"></textarea></div>
@@ -214,6 +214,7 @@ function apptDialog(teamEvent = false) {
     <footer class="sheet-foot"><button type="button" class="btn btn-ghost" data-act="close">Vazgeç</button>
       <button class="btn btn-primary" type="submit">Kaydet</button></footer></form>`;
   d.showModal();
+  if (!teamEvent) bindPicker(d, { id: 'a-pick', prospects: s.prospects });
 }
 
 // ====================================================================

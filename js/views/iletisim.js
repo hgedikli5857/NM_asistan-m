@@ -4,6 +4,7 @@ import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
 import { checkMessage, fillTemplate } from '../iletisim/uyum.js';
 import { CHANNELS, waNumber, addDays, stageLabel } from '../kazanim/model.js';
+import { pickerHTML, bindPicker } from '../ui/picker.js';
 import { SCENARIOS, MAX_TURNS, systemPrompt, feedbackPrompt, callClaude, apiMessages } from '../iletisim/pratik.js';
 
 const TABS = [
@@ -43,7 +44,7 @@ export async function renderIletisim(target, context) {
   el.addEventListener('submit', onSubmit);
 
   const [p, s] = await Promise.all([
-    supabase.from('prospects').select('id, full_name, phone, stage, occupation, interests, notes, next_follow_up_at')
+    supabase.from('prospects').select('id, full_name, phone, instagram, stage, occupation, interests, notes, next_follow_up_at')
       .is('deleted_at', null).order('full_name').limit(2000),
     supabase.from('scripts').select('*').order('created_at', { ascending: false })
   ]);
@@ -60,14 +61,16 @@ function allTemplates() {
     own: t.owner_id === ctx.user.id, shared: t.is_shared }));
   return [...own, ...SYSTEM_TEMPLATES];
 }
-const myName = () => (ctx.profile?.full_name || '').split(' ')[0];
+const myName = () => firstName(ctx.profile?.full_name);
+// İsim başındaki !, *, nokta gibi işaretleri at, ilk kelimeyi al
+export const firstName = n => String(n || '').replace(/^[^\p{L}\d]+/u, '').trim().split(/\s+/)[0] || '';
 const currentProspect = () => state.prospects.find(p => p.id === state.prospectId) || null;
 
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === state.tab));
   const body = el.querySelector('#i-body');
   body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : viewObjections();
-  if (state.tab === 'yaz') renderCheck();
+  if (state.tab === 'yaz') { renderCheck(); bindPicker(el, { id: 'i-pick', prospects: state.prospects, onSelect: selectProspect }); }
 }
 
 // ====================================================================
@@ -81,11 +84,7 @@ function viewCompose() {
     <section class="card">
       <h2><i class="ti ti-user" aria-hidden="true"></i> Kime?</h2>
       <div class="field" style="margin-bottom:6px">
-        <label for="i-prospect">Aday seç</label>
-        <select id="i-prospect">
-          <option value="">Listeden seç (isteğe bağlı)</option>
-          ${state.prospects.map(x => `<option value="${x.id}" ${x.id === state.prospectId ? 'selected' : ''}>${esc(x.full_name)} · ${esc(stageLabel(x.stage))}</option>`).join('')}
-        </select>
+        ${pickerHTML({ id: 'i-pick', label: 'Aday seç (isteğe bağlı)', prospects: state.prospects, selectedId: state.prospectId })}
       </div>
       ${p ? `<p class="small muted">${[p.occupation, p.interests].filter(Boolean).map(esc).join(' · ') || 'Ek bilgi yok'}</p>` : ''}
 
@@ -98,7 +97,7 @@ function viewCompose() {
         ${list.map(t => `<button class="tpl" data-use="${t.id}">
           <span class="tpl-title">${esc(t.title)}</span>
           <span class="tpl-meta">${esc(purposeLabel(t.purpose))}${t.channel ? ' · ' + esc(t.channel) : ''}${t.own ? ' · <b>benim</b>' : ''}</span>
-          <span class="tpl-body">${esc(fillTemplate(t.body, { isim: p?.full_name.split(' ')[0], ben: myName() }))}</span>
+          <span class="tpl-body">${esc(fillTemplate(t.body, { isim: firstName(p?.full_name), ben: myName() }))}</span>
         </button>`).join('') || '<p class="muted small">Bu amaçta şablon yok.</p>'}
       </div>
     </section>
@@ -259,25 +258,24 @@ function onInput(e) {
   if (e.target.id === 't-body') updateTplCheck();
 }
 
-function onChange(e) {
-  if (e.target.id === 'i-prospect') {
-    const prevName = currentProspect()?.full_name.split(' ')[0];
-    state.prospectId = e.target.value;
-    const p = currentProspect();
-    // Metinde önceki adayın adı ya da [isim] geçiyorsa yenisiyle değiştir
-    if (p) {
-      const first = p.full_name.split(' ')[0];
-      state.text = state.text.replace(/\[isim\]/g, first);
-      if (prevName && prevName !== first) state.text = state.text.split(prevName).join(first);
-    }
-    draw();
+function onChange() {}
+
+function selectProspect(p) {
+  const prevName = firstName(currentProspect()?.full_name);
+  state.prospectId = p ? p.id : '';
+  // Metinde önceki adayın adı ya da [isim] geçiyorsa yenisiyle değiştir
+  if (p) {
+    const first = firstName(p.full_name);
+    state.text = state.text.replace(/\[isim\]/g, first);
+    if (prevName && prevName !== first) state.text = state.text.split(prevName).join(first);
   }
+  draw();
 }
 
 function useTemplate(body) {
   if (!body) return;
   const p = currentProspect();
-  state.text = fillTemplate(body, { isim: p?.full_name.split(' ')[0], ben: myName() });
+  state.text = fillTemplate(body, { isim: firstName(p?.full_name), ben: myName() });
   state.tab = 'yaz';
   history.replaceState(null, '', '#/iletisim?tab=yaz');
   draw();

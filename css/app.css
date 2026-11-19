@@ -484,3 +484,20 @@ blockquote.opener { margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid
   .chip.st-paylasildi { background: #16372A; border-color: #2E7D5B; }
   .msg.me { background: var(--gold-500); color: var(--navy-900); }
 }
+
+/* ===================== Aranabilir aday seçici ===================== */
+.picker { display: grid; gap: 6px; position: relative; }
+.picker > label { font-size: .875rem; font-weight: 500; }
+.picker-box { position: relative; }
+.picker-box > i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem; pointer-events: none; }
+.picker-box input { width: 100%; padding: 11px 12px 11px 38px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); outline: none; }
+.picker-box input:focus { border-color: var(--gold-500); box-shadow: 0 0 0 3px var(--gold-100); }
+.picker-list { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(10, 21, 48, .15); max-height: 320px; overflow-y: auto; }
+.picker-list li { padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+.picker-list li:hover, .picker-list li[aria-selected="true"] { background: var(--gold-100); }
+.picker-list .picker-empty { color: var(--text-muted); cursor: default; }
+.picker-list .picker-empty:hover { background: none; }
+.picker-chosen { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 12px; border: 1px solid var(--gold-500); background: var(--gold-100); border-radius: var(--radius-sm); }
+.picker-chosen i { color: var(--gold-600); }
+.picker-hint { font-size: .75rem; }
+.picker [hidden] { display: none !important; }
