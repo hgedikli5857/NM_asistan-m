@@ -4,7 +4,7 @@ import { esc, toast, trError, todayISO } from '../ui.js';
 import {
   STAGES, TEMPS, KINDS, CHANNELS, SOURCES, ACTIVE_STAGES, QUIET_DAYS,
   stageLabel, addDays, relativeDay, daysBetween, waNumber,
-  dueFollowUps, quietHotProspects, filterProspects, countByStage,
+  dueFollowUps, quietHotProspects, filterProspects, countByStage, tagCounts, parseTags,
   readLegacy, mapLegacy
 } from '../kazanim/model.js';
 
@@ -15,7 +15,7 @@ const TABS = [
 ];
 const IMPORT_FLAG = 'nmd_legacy_import_done';
 
-let state = { tab: 'bugun', prospects: [], tasks: [], filter: { q: '', temp: '', stage: '' } };
+let state = { tab: 'bugun', prospects: [], tasks: [], filter: { q: '', temp: '', stage: '', tag: '' } };
 let el, ctx;
 
 // ====================================================================
@@ -142,6 +142,7 @@ function quietNote(p) {
 function viewList() {
   const f = state.filter;
   const list = filterProspects(state.prospects, f);
+  const tags = tagCounts(state.prospects);
   return `
     <div class="toolbar">
       <div class="field" style="margin:0;flex:1;min-width:180px">
@@ -158,6 +159,11 @@ function viewList() {
         </select>
       </div>
     </div>
+    ${tags.length ? `<div class="chips tag-chips" role="group" aria-label="Etiket filtresi">
+      <span class="small muted">Etiket:</span>
+      <button class="chip" data-tag="" aria-pressed="${!f.tag}">Hepsi</button>
+      ${tags.map(([t, n]) => `<button class="chip tag" data-tag="${esc(t)}" aria-pressed="${f.tag === t}">${t === '!' ? '<i class="ti ti-alert-circle" aria-hidden="true"></i> ! işaretli' : esc(t)} <span class="cnt">${n}</span></button>`).join('')}
+    </div>` : ''}
     <p class="small muted" id="k-count">${list.length} aday</p>
     <div class="p-list card" id="k-list" style="padding:6px 0">
       ${list.length ? list.map(p => row(p)).join('') : '<p class="muted" style="padding:16px">Bu filtreye uyan aday yok.</p>'}
@@ -175,6 +181,7 @@ function row(p, note = '') {
         <span class="p-meta">
           <span class="badge ${t.cls}">${t.label}</span>
           <span class="badge">${esc(stageLabel(p.stage))}</span>
+          ${(p.tags || []).map(t => `<span class="badge gold">${esc(t)}</span>`).join('')}
           ${note || (p.next_follow_up_at ? `<span class="small muted">Takip ${esc(relativeDay(p.next_follow_up_at))}</span>` : '')}
         </span>
       </span>
@@ -188,7 +195,7 @@ function row(p, note = '') {
 }
 
 function initials(name) {
-  return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toLocaleUpperCase('tr-TR');
+  return String(name || '?').replace(/^[^\p{L}\d]+/u, '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toLocaleUpperCase('tr-TR');
 }
 
 // ====================================================================
@@ -265,6 +272,8 @@ function formDialog(p = null) {
           <div class="field"><label for="f-occ">Meslek</label><input id="f-occ" name="occupation" value="${esc(v.occupation)}"></div>
           <div class="field"><label for="f-int">İlgi alanları</label><input id="f-int" name="interests" value="${esc(v.interests)}"></div>
         </div>
+        <div class="field"><label for="f-tags">Etiketler</label>
+          <input id="f-tags" name="tags" value="${esc((v.tags || []).join(', '))}" placeholder="Ör. !, aile, iş arkadaşı (virgülle ayır)"></div>
         <div class="field"><label for="f-notes">Notlar</label>
           <textarea id="f-notes" name="notes" rows="3">${esc(v.notes)}</textarea></div>
         ${p ? '' : `<label class="check"><input type="checkbox" name="kvkk">
@@ -363,6 +372,8 @@ function onClick(e) {
 
   const tempBtn = e.target.closest('[data-temp]');
   if (tempBtn) { state.filter.temp = tempBtn.dataset.temp; draw(); return; }
+  const tagBtn = e.target.closest('[data-tag]');
+  if (tagBtn) { state.filter.tag = tagBtn.dataset.tag; draw(); return; }
 
   const b = e.target.closest('[data-act]');
   if (!b) return;
@@ -430,6 +441,7 @@ async function saveProspect(form) {
     occupation: f('occupation').value.trim() || null,
     interests: f('interests').value.trim() || null,
     notes: f('notes').value.trim() || null,
+    tags: parseTags(f('tags').value),
     next_follow_up_at: followVal ? new Date(followVal + 'T10:00:00').toISOString() : null
   };
 

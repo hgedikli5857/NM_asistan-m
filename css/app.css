@@ -501,3 +501,5 @@ blockquote.opener { margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid
 .picker-chosen i { color: var(--gold-600); }
 .picker-hint { font-size: .75rem; }
 .picker [hidden] { display: none !important; }
+.tag-chips { align-items: center; margin: 4px 0 8px; }
+.chip.tag .cnt { font-size: .72rem; opacity: .75; }

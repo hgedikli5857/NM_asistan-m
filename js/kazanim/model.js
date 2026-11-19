@@ -88,15 +88,28 @@ export function quietHotProspects(prospects, now = new Date()) {
 }
 
 // ---------- Filtre ----------
-export function filterProspects(list, { q = '', temp = '', stage = '' } = {}) {
+export function filterProspects(list, { q = '', temp = '', stage = '', tag = '' } = {}) {
   const needle = q.trim().toLocaleLowerCase('tr-TR');
   return list.filter(p => {
     if (temp && p.temperature !== temp) return false;
     if (stage && p.stage !== stage) return false;
+    if (tag && !(p.tags || []).includes(tag)) return false;
     if (!needle) return true;
     return [p.full_name, p.phone, p.instagram, p.notes, p.occupation, p.interests, (p.tags || []).join(' ')]
       .some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(needle));
   });
+}
+
+// Listede geçen etiketler ve kaç adayda olduğu (çoktan aza)
+export function tagCounts(list) {
+  const m = new Map();
+  list.forEach(p => (p.tags || []).forEach(t => m.set(t, (m.get(t) || 0) + 1)));
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+// "!, öncelikli , aile" → ['!', 'öncelikli', 'aile']
+export function parseTags(text) {
+  return [...new Set(String(text || '').split(',').map(t => t.trim()).filter(Boolean).map(t => t.slice(0, 30)))].slice(0, 10);
 }
 
 export function countByStage(list) {
@@ -138,6 +151,7 @@ export function mapLegacy(p, orgId) {
     occupation: clean(p.meslek),
     interests: clean(p.ilgi),
     notes: clean(p.not),
+    tags: /^\s*!/.test(String(p.isim)) ? ['!'] : [],
     extra
   };
   if (created) row.created_at = created.toISOString();
