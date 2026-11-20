@@ -1,5 +1,5 @@
 // Basit çevrimdışı önbellek: uygulama dosyaları önbellekten, veri her zaman internetten.
-const CACHE = 'nm-departmani-v3.2.1';
+const CACHE = 'nm-departmani-v3.2.2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './icons/icon.svg',
   './css/tokens.css', './css/app.css',
@@ -28,7 +28,7 @@ self.addEventListener('fetch', e => {
 
   // Önce internet, olmazsa önbellek: güncellemeler hemen görünür, çevrimdışıyken de açılır
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));

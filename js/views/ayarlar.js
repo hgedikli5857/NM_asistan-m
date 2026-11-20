@@ -63,6 +63,7 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
         <p class="muted small">Rolün: ${esc(roleName(ctx.membership?.role))} · Plan: ${esc(planName(ctx.org?.plan))} · ${ctx.memberships?.length || 1} ekipte üyesin</p>
         <p class="muted small">Eski uygulama hâlâ çalışıyor: <a href="eski/">NM Asistanı (eski)</a></p>
         <p class="muted small">Sürüm ${esc(APP_VERSION)}</p>
+        <p class="muted small" id="screen-info"></p>
         <button class="btn btn-ghost" id="logout"><i class="ti ti-logout" aria-hidden="true"></i> Çıkış yap</button>
       </section>
 
@@ -122,6 +123,15 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
   });
   aiStatus(el.querySelector('#ai-status'));
   crmBox(el.querySelector('#crm-status'));
+  const si = el.querySelector('#screen-info');
+  const showScreen = () => {
+    if (!si?.isConnected) { window.removeEventListener('resize', showScreen); return; }
+    const w = window.innerWidth, h = window.innerHeight;
+    const mode = w <= 560 ? 'Telefon' : w <= 1100 ? 'Tablet' : 'Masaüstü';
+    const app = matchMedia('(display-mode: standalone)').matches ? 'yüklü uygulama' : 'tarayıcı';
+    if (si) si.textContent = `Ekran: ${w}×${h} · Görünüm: ${mode} · ${app}`;
+  };
+  showScreen(); window.addEventListener('resize', showScreen);
   el.querySelector('#ai-remove')?.addEventListener('click', () => {
     localStorage.removeItem(AI_KEY);
     localStorage.removeItem('nma_api_key');
