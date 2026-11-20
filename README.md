@@ -11,7 +11,7 @@ One More International ekibi için network marketing operasyon merkezi. Telefona
 |---|---|
 | Kazanım | Bugün listesi, aday listesi, satış hunisi, aday kartı, eski uygulamadan içe aktarma |
 | İletişim | Mesaj yaz, 21 uyumlu şablon, 12 itiraz yanıtı, canlı uyum kontrolü, AI rol yapma pratiği |
-| Pazarlama | İçerik takvimi ve denge, caption fikirleri, web sitesi aday formu (`form.html`), Instagram'dan aday |
+| Pazarlama | İçerik takvimi ve denge, caption fikirleri, Reels Stüdyosu (telefonda video üretimi), web sitesi aday formu (`form.html`), Instagram'dan aday |
 | Ekip | Davet linki, üyeler ve aktiflik, soy ağacı, takvim ve ekip etkinlikleri, sıralama, rol yönetimi |
 | Akademi | İlk 14 gün listesi, 90 günlük program (15 ders + quiz), 15 rozet |
 | Ölçüm ve uyum | Göstergeler ve hedefler, haftalık hesap verme, gelir takibi, KVKK kapsamı ve kalıcı silme |

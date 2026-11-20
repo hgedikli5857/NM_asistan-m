@@ -1,13 +1,17 @@
-// Pazarlama birimi: içerik takvimi, caption fikirleri, web sitesi aday formu, Instagram'dan hızlı aday
+// Pazarlama birimi: içerik takvimi, caption fikirleri, Reels Stüdyosu, web sitesi aday formu, Instagram'dan hızlı aday
 import { supabase } from '../supabase.js';
 import { esc, toast, trError, todayISO } from '../ui.js';
 import { PILLARS, pillarLabel, FORMATS, PLATFORMS, POST_STATUS, IDEAS } from '../pazarlama/content.js';
 import { checkMessage } from '../iletisim/uyum.js';
-import { aiChat, aiAvailable, ETHICS } from '../ai/client.js';
+import { aiChat, aiAvailable, ETHICS, extractJSON } from '../ai/client.js';
+import { TEMPLATES, SCENE_COUNT, REEL_TOTAL, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
+  reelFindings, aiStoryboardPrompt, parseAiStoryboard, suggestCaption, reelSupport, drawReelFrame, previewTime,
+  loadClip, releaseClips, loadReelFonts, renderReel, reelFileName } from '../pazarlama/reels.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
   { id: 'fikir', label: 'Fikirler', icon: 'ti-bulb' },
+  { id: 'reels', label: 'Reels', icon: 'ti-movie' },
   { id: 'form', label: 'Aday formu', icon: 'ti-forms' },
   { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram' }
 ];
@@ -33,6 +37,8 @@ export async function renderPazarlama(target, context) {
   el.addEventListener('click', onClick);
   el.addEventListener('input', onInput);
   el.addEventListener('submit', onSubmit);
+  el.addEventListener('change', onChange);
+  initReel();
   // AI hazır mı? (diyalog açılmadan önce biliniyor olsun)
   s.ai = await aiAvailable();
 
@@ -49,7 +55,8 @@ export async function renderPazarlama(target, context) {
 
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === s.tab));
-  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, form: viewForm, instagram: viewInstagram }[s.tab]();
+  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, reels: viewReels, form: viewForm, instagram: viewInstagram }[s.tab]();
+  if (s.tab === 'reels') afterReelDraw();
 }
 
 // ====================================================================
@@ -116,6 +123,7 @@ function postDialog(p = null, preset = {}) {
     </div>
     <footer class="sheet-foot">
       ${p ? '<button type="button" class="btn btn-ghost" data-act="del-post" data-id="' + p.id + '">Sil</button>' : ''}
+      ${p && p.storyboard ? '<button type="button" class="btn btn-ghost" data-act="reel-open" data-id="' + p.id + '"><i class="ti ti-movie" aria-hidden="true"></i> Stüdyoda aç</button>' : ''}
       ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="ai-cap"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile yaz</button>' : ''}
       <button type="button" class="btn btn-ghost" data-act="copy-cap">Caption'ı kopyala</button>
       <button class="btn btn-primary" type="submit">Kaydet</button></footer></form>`;
@@ -250,9 +258,20 @@ function onClick(e) {
     case 'copy-cap': navigator.clipboard.writeText(el.querySelector('#c-cap').value).then(() => toast('Caption kopyalandı.')); break;
     case 'del-post': delPost(b, id); break;
     case 'create-form': createForm(b); break;
+    case 'reel-prev': s.reel.prev = +b.dataset.i; paintPreview(); markPrev(); break;
+    case 'reel-ai': reelAi(b); break;
+    case 'reel-render': reelRender(b); break;
+    case 'reel-share': reelShare(); break;
+    case 'reel-cal': reelToCalendar(b); break;
+    case 'reel-open': reelOpen(id); break;
+    case 'reel-new': reelNew(); break;
+    case 'reel-clear': reelClearClip(+b.dataset.i); break;
   }
 }
-function onInput(e) { if (e.target.id === 'c-cap') updateCheck(); }
+function onInput(e) {
+  if (e.target.id === 'c-cap') updateCheck();
+  if (e.target.dataset.reel) onReelInput(e.target);
+}
 
 async function cycle(id) {
   const p = s.posts.find(x => x.id === id);
@@ -337,4 +356,250 @@ async function saveIg(form) {
   await supabase.from('interactions').insert({ org_id: ctx.org.id, prospect_id: data.id, kind: 'mesaj', channel: 'Instagram', summary: f('note').value.trim() || 'Instagram DM' });
   form.reset();
   toast(`${data.full_name} adaylara eklendi, takip 2 gün sonra.`);
+}
+
+// ====================================================================
+// Reels Stüdyosu: senaryo → klipler → telefonda video üretimi → kaydet/paylaş/takvime ekle
+const brandKey = () => `nmd_reels_brand_${ctx.user.id}`;
+function loadBrand() {
+  try { return JSON.parse(localStorage.getItem(brandKey()) || '{}'); } catch { return {}; }
+}
+function saveBrand(sb) {
+  try { localStorage.setItem(brandKey(), JSON.stringify({ handle: sb.handle, kw: sb.kw })); } catch { /* özel mod */ }
+}
+function initReel() {
+  s.reel = { sb: defaultStoryboard(loadBrand()), topic: '', postId: null, media: new Array(SCENE_COUNT).fill(null),
+    names: new Array(SCENE_COUNT).fill(''), prev: 0, out: null, busy: false, quality: 1080 };
+}
+
+function viewReels() {
+  const r = s.reel, sb = r.sb, sup = reelSupport(window);
+  const saved = s.posts.filter(p => p.storyboard).slice(-6).reverse();
+  const tpl = TEMPLATES[sb.template];
+  return `
+    ${sup.ok ? '' : `<div class="check-box warn"><p><strong>Bu tarayıcı video üretemiyor.</strong> Telefonunuzda Chrome'un güncel sürümüyle açın.</p></div>`}
+    ${sup.ok && !sup.mp4 ? `<div class="check-box warn"><p>Bu tarayıcı yalnızca WebM üretebiliyor; Instagram kabul etmeyebilir. Chrome'un güncel sürümünü deneyin.</p></div>` : ''}
+    <div class="compose reel-compose">
+      <section class="card reel-form">
+        <h2><i class="ti ti-movie" aria-hidden="true"></i> ${r.postId ? 'Reels senaryosu (takvimden)' : 'Yeni Reels'}</h2>
+        <p class="small muted">Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)} Kutularda 1. satır beyaz, 2. satır altın yazılır.</p>
+        <div class="field"><label for="r-topic">Konu</label>
+          <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. İşimin yanında akşamlarım"></div>
+        ${s.ai ? `<button type="button" class="btn btn-ghost" data-act="reel-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile senaryo yaz</button>` : ''}
+        <details class="reel-brand"${sb.handle ? '' : ' open'}><summary>Marka ayarları</summary>
+          <div class="form-2">
+            <div class="field"><label for="r-handle">Hesap adı</label><input id="r-handle" data-reel="handle" maxlength="31" value="${esc(sb.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
+            <div class="field"><label for="r-kw">Yorum anahtar kelimesi</label><input id="r-kw" data-reel="kw" maxlength="16" value="${esc(sb.kw)}"></div>
+          </div>
+          <p class="small muted">Bu bilgiler sadece bu cihazda hatırlanır ve her videonun kapanışında görünür.</p>
+        </details>
+        ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
+          <legend>Sahne ${i + 1}</legend>
+          <div class="field"><label for="r-top-${i}">Başlık</label><textarea id="r-top-${i}" data-reel="top" data-i="${i}" rows="2" maxlength="60">${esc(sc.top)}</textarea></div>
+          <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="2" maxlength="70">${esc(sc.bot)}</textarea></div>
+          <div class="reel-clip">
+            <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-video-plus" aria-hidden="true"></i> Klip seç</label>
+            <input type="file" id="r-file-${i}" data-clip="${i}" accept="video/*,image/*" class="sr-only">
+            <span class="small muted reel-clip-name" id="r-name-${i}">${esc(r.names[i] || 'Klip yok · örnek arka plan')}</span>
+            ${r.media[i] ? `<button type="button" class="icon-btn" data-act="reel-clear" data-i="${i}" aria-label="Sahne ${i + 1} klibini kaldır"><i class="ti ti-x" aria-hidden="true"></i></button>` : ''}
+          </div>
+        </fieldset>`).join('')}
+        <fieldset class="reel-scene"><legend>Kapanış</legend>
+          <div class="field"><label for="r-slogan">Slogan</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
+          <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>
+        </fieldset>
+        <div id="r-check"></div>
+      </section>
+      <section class="card reel-side">
+        <h2><i class="ti ti-device-mobile" aria-hidden="true"></i> Önizleme</h2>
+        <div class="reel-stage"><canvas id="r-canvas" width="540" height="960" aria-label="Video önizlemesi"></canvas></div>
+        <div class="chips reel-prev-chips" role="group" aria-label="Önizlenecek sahne">
+          ${[...sb.scenes.map((_, i) => `${i + 1}`), 'Slogan', 'Kapanış'].map((l, i) => `<button class="chip" data-act="reel-prev" data-i="${i}" aria-pressed="${r.prev === i}">${l}</button>`).join('')}
+        </div>
+        <div class="field"><label for="r-quality">Kalite</label>
+          <select id="r-quality" data-reel="quality"><option value="1080" ${r.quality === 1080 ? 'selected' : ''}>1080 × 1920 (önerilen)</option><option value="720" ${r.quality === 720 ? 'selected' : ''}>720 × 1280 (eski telefonlar)</option></select></div>
+        <div class="reel-bar" aria-hidden="true"><span id="r-prog"></span></div>
+        <p class="small muted" id="r-status" role="status">${r.busy ? 'Üretiliyor…' : `Video ${Math.round(REEL_TOTAL)} sn sürer; üretim sırasında ekranı açık tutun.`}</p>
+        <button type="button" class="btn btn-gold reel-go" data-act="reel-render" ${sup.ok && !r.busy ? '' : 'disabled'}><i class="ti ti-player-record" aria-hidden="true"></i> Videoyu üret</button>
+        <div id="r-out">${reelOutHtml()}</div>
+        <div class="quick" style="margin-top:12px">
+          <button type="button" class="btn btn-ghost" data-act="reel-cal"><i class="ti ti-calendar-plus" aria-hidden="true"></i> ${r.postId ? 'Takvimde güncelle' : 'Takvime kaydet'}</button>
+          <button type="button" class="btn btn-ghost" data-act="reel-new"><i class="ti ti-file-plus" aria-hidden="true"></i> Yeni senaryo</button>
+        </div>
+        <p class="error" id="r-error" role="alert"></p>
+        ${saved.length ? `<h3 style="margin-top:18px">Kayıtlı senaryolar</h3>
+          <ul class="entry-list">${saved.map(p => `<li><button class="link-btn" data-act="reel-open" data-id="${p.id}">${esc(p.topic)}</button>
+            <span class="small muted">${esc(new Date(p.planned_for).toLocaleDateString('tr-TR'))} · ${POST_STATUS[p.status]}</span></li>`).join('')}</ul>` : ''}
+      </section>
+    </div>
+    <p class="small muted" style="margin-top:12px">Klipler ve üretilen video telefonunuzda kalır, sunucuya yüklenmez. Müziği paylaşırken Instagram'ın müzik kütüphanesinden ekleyin.</p>`;
+}
+
+function reelOutHtml() {
+  const o = s.reel.out;
+  if (!o) return '';
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([o.blob], o.name, { type: o.blob.type })] }));
+  return `<div class="reel-result">
+    <video src="${o.url}" controls playsinline class="reel-video"></video>
+    <p class="small muted">${o.ext.toUpperCase()} · ${o.width} × ${o.height} · ${(o.blob.size / 1048576).toFixed(1)} MB${o.drops > 60 ? ' · Takılma yüksek: 720 kaliteyi deneyin' : ''}</p>
+    <div class="quick">
+      <a class="btn btn-gold" href="${o.url}" download="${esc(o.name)}"><i class="ti ti-download" aria-hidden="true"></i> Telefona kaydet</a>
+      ${canShare ? `<button type="button" class="btn btn-ghost" data-act="reel-share"><i class="ti ti-share" aria-hidden="true"></i> Paylaş</button>` : ''}
+    </div></div>`;
+}
+
+function afterReelDraw() { updateReelCheck(); paintPreview(); }
+
+let previewQueued = false;
+async function paintPreview() {
+  if (previewQueued) return;
+  previewQueued = true;
+  await loadReelFonts();
+  requestAnimationFrame(() => {
+    previewQueued = false;
+    const cv = el.querySelector('#r-canvas');
+    if (!cv || s.reel.busy) return;
+    const i = s.reel.prev;
+    // Önizlemede her sahnenin kendi klibi, o sahnenin anında gösterilir
+    drawReelFrame(cv.getContext('2d'), cv.width, cv.height, previewTime(i), s.reel.media, s.reel.sb);
+  });
+}
+function markPrev() {
+  el.querySelectorAll('.reel-prev-chips [data-i]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.i === s.reel.prev));
+}
+
+function updateReelCheck() {
+  const box = el.querySelector('#r-check');
+  if (!box) return;
+  const f = reelFindings(s.reel.sb);
+  box.innerHTML = f.length ? `<div class="check-box warn">${f.map(x => `<p><strong>${esc(x.cat)}:</strong> "${x.hits.map(esc).join('", "')}" — ${esc(x.tip)}</p>`).join('')}</div>`
+    : '<div class="check-box ok"><i class="ti ti-shield-check" aria-hidden="true"></i> Uyum kontrolü: sorun görünmüyor</div>';
+}
+
+// Yazarken ekranı yeniden çizme: yalnızca durumu, uyum kutusunu ve önizlemeyi güncelle
+function onReelInput(t) {
+  const r = s.reel, k = t.dataset.reel, i = +t.dataset.i;
+  if (k === 'topic') { r.topic = t.value; return; }
+  if (k === 'quality') { r.quality = +t.value; return; }
+  const raw = { ...r.sb, scenes: r.sb.scenes.map(x => ({ ...x })) };
+  if (k === 'top' || k === 'bot') { raw.scenes[i][k] = t.value; r.prev = i; markPrev(); }
+  else raw[k] = t.value;
+  if (k === 'slogan') { r.prev = SCENE_COUNT; markPrev(); }
+  if (k === 'cta' || k === 'kw' || k === 'handle') { r.prev = SCENE_COUNT + 1; markPrev(); }
+  r.sb = normalizeStoryboard(raw);
+  if (k === 'handle' || k === 'kw') saveBrand(r.sb);
+  updateReelCheck(); paintPreview();
+}
+
+async function onChange(e) {
+  const t = e.target;
+  if (t.dataset.reel === 'quality') { s.reel.quality = +t.value; return; }
+  if (t.dataset.reel === 'handle') { t.value = normalizeHandle(t.value); return; }
+  if (t.dataset.reel === 'kw') { t.value = normalizeKeyword(t.value); return; }
+  if (t.dataset.clip === undefined) return;
+  const i = +t.dataset.clip, file = t.files && t.files[0];
+  if (!file) return;
+  const name = el.querySelector('#r-name-' + i);
+  if (file.size > 300 * 1048576) { toast('Klip çok büyük (300 MB üstü). Daha kısa bir klip seçin.'); return; }
+  if (name) name.textContent = 'Yükleniyor…';
+  try {
+    const m = await loadClip(file);
+    releaseClips([s.reel.media[i]]);
+    s.reel.media[i] = m; s.reel.names[i] = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+    s.reel.prev = i;
+    if (s.tab === 'reels') draw();
+  } catch (err) { if (name) name.textContent = s.reel.names[i] || 'Klip yok · örnek arka plan'; toast(err.message); }
+}
+
+function reelClearClip(i) {
+  releaseClips([s.reel.media[i]]);
+  s.reel.media[i] = null; s.reel.names[i] = '';
+  draw();
+}
+
+async function reelAi(btn) {
+  const err = el.querySelector('#r-error');
+  const topic = s.reel.topic.trim();
+  if (!topic) { err.textContent = 'Önce konuyu yazın.'; el.querySelector('#r-topic')?.focus(); return; }
+  err.textContent = '';
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
+  try {
+    const text = await aiChat({ maxTokens: 700, messages: [{ role: 'user', content: aiStoryboardPrompt(topic, s.reel.sb) }] });
+    s.reel.sb = parseAiStoryboard(extractJSON(text), s.reel.sb);
+    s.reel.prev = 0; draw();
+    toast('Senaryo hazır; kendi hayatınıza göre düzenleyin.');
+  } catch (e) {
+    const box = el.querySelector('#r-error'); if (box) box.textContent = 'AI: ' + e.message;
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+async function reelRender(btn) {
+  const r = s.reel, err = el.querySelector('#r-error');
+  const risky = reelFindings(r.sb).filter(x => x.level === 'yuksek');
+  if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; err.textContent = 'Metinde yüksek riskli ifade var. Düzeltin ya da yine de üretmek için tekrar dokunun.'; return; }
+  err.textContent = ''; btn.dataset.confirm = '';
+  if (r.out) { URL.revokeObjectURL(r.out.url); r.out = null; el.querySelector('#r-out').innerHTML = ''; }
+  r.busy = true; btn.disabled = true;
+  const status = () => el.querySelector('#r-status'), prog = () => el.querySelector('#r-prog');
+  const onHide = () => { if (document.hidden && status()) status().textContent = 'Ekran kapandı ya da uygulama değişti; video eksik olabilir. Bitince yeniden üretin.'; };
+  document.addEventListener('visibilitychange', onHide);
+  if (status()) status().textContent = 'Üretiliyor… ekranı kapatmayın.';
+  try {
+    const canvas = el.querySelector('#r-canvas') || document.createElement('canvas');
+    const res = await renderReel({ canvas, sb: r.sb, media: r.media, size: r.quality,
+      onProgress: p => { const b = prog(); if (b) b.style.width = Math.round(p * 100) + '%'; } });
+    const name = reelFileName(r.topic || r.sb.scenes[0].top, res.ext);
+    r.out = { ...res, name, url: URL.createObjectURL(res.blob) };
+    r.busy = false;
+    if (s.tab === 'reels') draw();
+    toast('Video hazır. Kaydedip Instagram\'da Reels olarak paylaşabilirsiniz.');
+  } catch (e) {
+    r.busy = false;
+    if (s.tab === 'reels') { draw(); const x = el.querySelector('#r-error'); if (x) x.textContent = e.message; }
+  } finally { document.removeEventListener('visibilitychange', onHide); }
+}
+
+async function reelShare() {
+  const o = s.reel.out; if (!o) return;
+  const file = new File([o.blob], o.name, { type: o.blob.type });
+  try { await navigator.share({ files: [file], text: suggestCaption(s.reel.sb) }); }
+  catch (e) { if (e.name !== 'AbortError') toast('Paylaşılamadı; önce telefona kaydedin.'); }
+}
+
+async function reelToCalendar(btn) {
+  const r = s.reel, err = el.querySelector('#r-error');
+  const risky = reelFindings(r.sb).filter(x => x.level === 'yuksek');
+  if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; err.textContent = 'Metinde yüksek riskli ifade var. Yine de kaydetmek için tekrar dokunun.'; return; }
+  err.textContent = ''; btn.disabled = true;
+  const topic = (r.topic.trim() || r.sb.scenes[0].top.replace(/\n/g, ' ')).slice(0, 200);
+  const row = { topic, format: 'reels', storyboard: r.sb };
+  let q;
+  if (r.postId) q = supabase.from('content_posts').update(row).eq('id', r.postId).select().single();
+  else q = supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, planned_for: todayISO(), platform: 'Instagram',
+    pillar: 'yasam', status: r.out ? 'hazir' : 'taslak', caption: suggestCaption(r.sb).slice(0, 2200) }).select().single();
+  const { data, error } = await q;
+  btn.disabled = false;
+  if (error) { err.textContent = trError(error); return; }
+  s.posts = (r.postId ? s.posts.map(x => (x.id === data.id ? data : x)) : [...s.posts, data]).sort((a, b) => (a.planned_for < b.planned_for ? -1 : 1));
+  r.postId = data.id; r.topic = data.topic;
+  draw();
+  toast(r.out ? 'Reels takvime "Hazır" olarak kaydedildi.' : 'Senaryo takvime taslak olarak kaydedildi.');
+}
+
+function reelOpen(id) {
+  const p = s.posts.find(x => x.id === id);
+  if (!p || !p.storyboard) return;
+  const dlg = el.querySelector('#p-dialog'); if (dlg?.open) dlg.close();
+  if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
+  s.reel.sb = normalizeStoryboard(p.storyboard); s.reel.topic = p.topic; s.reel.postId = p.id; s.reel.out = null; s.reel.prev = 0;
+  s.tab = 'reels'; history.replaceState(null, '', '#/pazarlama?tab=reels'); draw();
+}
+
+function reelNew() {
+  if (s.reel.busy) return;
+  releaseClips(s.reel.media);
+  if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
+  const q = s.reel.quality;
+  initReel(); s.reel.quality = q; draw();
 }

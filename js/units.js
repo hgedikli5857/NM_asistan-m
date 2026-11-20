@@ -25,9 +25,10 @@ export const UNITS = [
   },
   {
     id: 'pazarlama', title: 'Pazarlama', icon: 'ti-speakerphone', group: 'grow', phase: 3, live: true,
-    summary: 'İçerik takvimi, Instagram ve aday toplama sayfası.',
+    summary: 'İçerik takvimi, Reels Stüdyosu, Instagram ve aday toplama sayfası.',
     features: [
       'Haftalık içerik takvimi ve hazır caption',
+      'Reels Stüdyosu: telefonda markalı Reels videosu üretme',
       'Instagram DM / yorumdan adaya dönüştürme',
       'hakangedikli.com aday formu → doğrudan Kazanım birimine',
       'Kampanya ve etkinlik duyuruları'
