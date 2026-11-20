@@ -64,7 +64,7 @@ function renderShell() {
         </div>
         <nav>
           ${NAV.map(n => `<a class="nav-link" href="#/${n.id}" data-route="${n.id}">
-            <i class="ti ${n.icon}" aria-hidden="true"></i>${esc(n.title)}</a>`).join('')}
+            <i class="ti ${n.icon}" aria-hidden="true"></i><span class="lbl">${esc(n.title)}</span><span class="lbl-s" aria-hidden="true">${esc(n.short || n.title)}</span></a>`).join('')}
         </nav>
         <div class="spacer"></div>
         <div class="user"><div class="name">${esc(name)}</div>

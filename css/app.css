@@ -129,7 +129,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ---------- Mobil ---------- */
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .sidebar { display: none; }
   .main { margin-left: 0; padding: 16px 16px calc(var(--bottombar-h) + 28px); }
   .topbar {
@@ -253,7 +253,7 @@ dialog.sheet form { display: contents; }
 .danger-zone { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
 .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .funnel-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .kanban { grid-auto-columns: 78%; }
   dialog.sheet { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto 0 0; border-radius: 18px 18px 0 0; }
@@ -268,7 +268,7 @@ dialog.sheet form { display: contents; }
   .badge.warn { background: #45201E; color: #F3B4AE; }
   .chip[aria-pressed="true"], .chip:has(input:checked) { background: var(--gold-500); border-color: var(--gold-500); color: var(--navy-900); }
 }
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   #toast { bottom: calc(var(--bottombar-h) + 16px + env(safe-area-inset-bottom)); }
 }
 
@@ -301,7 +301,7 @@ dialog.sheet form { display: contents; }
 .obj[open] summary { margin-bottom: 10px; }
 .obj ol { margin: 8px 0 12px; padding-left: 20px; }
 .obj blockquote { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--gold-500); background: var(--surface-2); border-radius: 0; font-size: .92rem; }
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .compose { grid-template-columns: 1fr; }
   .compose-editor { position: static; }
   .tpl-list { max-height: none; }
@@ -310,7 +310,7 @@ dialog.sheet form { display: contents; }
   .check-box.ok { background: #16372A; }
   .check-box.warn { background: #3A2F17; color: #F0C98A; border-color: #6E4A0E; }
 }
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .seg { display: flex; width: 100%; }
   .seg button { flex: 1; justify-content: center; padding: 8px 6px; font-size: .9rem; }
   .seg button i { display: none; }
@@ -351,7 +351,7 @@ fieldset.field input:not([type="radio"]) { width: 100%; padding: 10px 12px; bord
 .entry-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .entry-list li:last-child { border-bottom: 0; }
 .btn.sm { padding: 6px 10px; font-size: .82rem; }
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .conv { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .bars { gap: 3px; }
 }
@@ -468,7 +468,7 @@ blockquote.opener { margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid
 .guide-steps li.done a { color: var(--text-muted); text-decoration: line-through; }
 .guide-steps li.done i { color: var(--success); }
 
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .appt { grid-template-columns: 1fr; gap: 6px; }
   .appt-actions { justify-content: flex-start; }
   .mix-row { grid-template-columns: 1fr 80px; }
@@ -558,4 +558,26 @@ details.hist ol { padding-left: 18px; display: grid; gap: 8px; margin: 10px 0; }
 @media (prefers-color-scheme: dark) {
   .badge { color: #C9D3EA; }
   .badge.gold { color: #E3C27A; }
+}
+
+/* ===================== Tablet (641–1100 px): simgeli dar menü + masaüstü düzeni ===================== */
+.nav-link .lbl-s { display: none; }
+@media (min-width: 641px) and (max-width: 1100px) {
+  :root { --sidebar-w: 88px; }
+  .sidebar { padding: 16px 8px; align-items: stretch; overflow-y: auto; }
+  .sidebar .brand { justify-content: center; padding: 4px 0 14px; }
+  .sidebar .brand > div:not(.logo-mark) { display: none; }
+  .nav-link { flex-direction: column; gap: 3px; padding: 9px 4px; text-align: center; font-size: .7rem; line-height: 1.15; }
+  .nav-link i { font-size: 1.4rem; }
+  .nav-link .lbl, .nav-link .pill { display: none; }
+  .nav-link .lbl-s { display: block; }
+  .sidebar .user { display: none; }
+  .main { padding: 22px 24px 40px; max-width: none; }
+  .topbar-org { display: none; }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  .grid-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-units { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compose { grid-template-columns: 1fr; }
+  .compose-editor { position: static; }
 }
