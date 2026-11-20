@@ -7,6 +7,7 @@ import {
   dueFollowUps, quietHotProspects, filterProspects, countByStage, tagCounts, parseTags,
   readLegacy, mapLegacy
 } from '../kazanim/model.js';
+import { crmSummaryHTML, crmMessages, messagesHTML, crmAutoSync, resultText, crmWaiting } from '../crm/client.js';
 
 const TABS = [
   { id: 'bugun', label: 'Bugün', icon: 'ti-sun' },
@@ -47,6 +48,13 @@ export async function renderKazanim(target, context) {
   el.addEventListener('submit', onSubmit);
 
   await reload();
+  // WhatsApp bot CRM'den arka planda senkron (30 dakikada bir)
+  crmAutoSync().then(async r => {
+    if (r && (r.yeni || r.telefonla_eslesen) && el?.isConnected) {
+      toast(`WhatsApp CRM: ${resultText(r)}`);
+      await reload();
+    }
+  });
 }
 
 async function reload() {
@@ -76,6 +84,7 @@ function draw() {
 function viewToday() {
   const due = dueFollowUps(state.prospects);
   const quiet = quietHotProspects(state.prospects);
+  const waiting = crmWaiting(state.prospects);
   const openTasks = state.tasks.filter(t => !t.done_at).length;
   const doneTasks = state.tasks.length - openTasks;
 
@@ -95,6 +104,12 @@ function viewToday() {
       ${mini('Görevler', `${doneTasks} / ${state.tasks.length}`, 'tamamlanan / toplam')}
       ${mini('Açık aday', state.prospects.filter(p => ACTIVE_STAGES.includes(p.stage)).length, 'hunide ilerleyen')}
     </div>
+
+    ${waiting.length ? `<section class="card crm-card" style="margin-bottom:16px">
+      <h2><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp'ta seni bekleyenler</h2>
+      <p class="muted small">Bot bu konuşmaları sana devretti. Önce bunlara cevap ver.</p>
+      <div class="p-list">${waiting.map(p => row(p, `<span class="small muted">${esc(p.extra.crm.conv.handoff_reason || p.extra.crm.conv.preview || 'Cevap bekliyor')}</span>`)).join('')}</div>
+    </section>` : ''}
 
     <section class="card">
       <h2><i class="ti ti-bell-ringing" aria-hidden="true"></i> Takip zamanı gelenler</h2>
@@ -332,6 +347,8 @@ async function detailDialog(id) {
         <button class="btn btn-primary" type="submit">Kaydet</button>
       </form>
 
+      ${crmSummaryHTML(p.extra?.crm, p.id)}
+
       <dl class="facts">
         ${fact('Telefon', p.phone)}${fact('Instagram', p.instagram)}${fact('Kanal', p.channel)}${fact('Kaynak', p.source)}
         ${fact('Meslek', p.occupation)}${fact('İlgi alanları', p.interests)}
@@ -362,6 +379,21 @@ async function detailDialog(id) {
   tl.innerHTML = items.map(i => `<li><span class="when">${esc(new Date(i.at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }))}</span>${i.html}</li>`).join('');
 }
 
+async function showCrmMessages(btn, id) {
+  const box = el.querySelector('#crm-msgs');
+  if (!box) return;
+  if (!box.hidden) { box.hidden = true; return; }
+  btn.disabled = true;
+  box.hidden = false;
+  box.innerHTML = '<p class="muted small">Yükleniyor…</p>';
+  try {
+    box.innerHTML = messagesHTML(await crmMessages(id, 80));
+    box.querySelector('.chat')?.lastElementChild?.scrollIntoView({ block: 'nearest' });
+  } catch (err) {
+    box.innerHTML = `<p class="error">Mesajlar alınamadı: ${esc(err.message)}</p>`;
+  } finally { btn.disabled = false; }
+}
+
 const fact = (label, value) => (value ? `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>` : '');
 
 // ====================================================================
@@ -388,6 +420,7 @@ function onClick(e) {
     case 'delete': confirmDelete(b, id); break;
     case 'del-task': deleteTask(id); break;
     case 'import': runImport(b); break;
+    case 'crm-msgs': showCrmMessages(b, id); break;
     case 'import-hide': localStorage.setItem(IMPORT_FLAG, 'hidden'); renderImportBanner(); break;
   }
 }

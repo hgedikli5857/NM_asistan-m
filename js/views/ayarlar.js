@@ -2,6 +2,7 @@
 import { supabase } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
+import { crmStatus, crmSync, resultText } from '../crm/client.js';
 import { AI_KEY, getApiKey, serverReady, hasShareConsent, setShareConsent } from '../ai/client.js';
 
 export function renderSettings(el, ctx, { recovery = false } = {}) {
@@ -47,6 +48,11 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
           ${getApiKey() ? '<button class="btn btn-ghost" type="button" id="ai-remove">Anahtarı sil</button>' : ''}
         </div></details>
       </form>
+
+      <section class="card" id="crm-card">
+        <h2><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp bot CRM</h2>
+        <div id="crm-status"><span class="muted small">Durum kontrol ediliyor…</span></div>
+      </section>
 
       <section class="card">
         <h2>Ekip</h2>
@@ -115,6 +121,7 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
     toast(e.target.checked ? 'Aday bilgisi paylaşım izni verildi.' : 'İzin geri alındı; AI aday bilgisi istemeden önce tekrar soracak.');
   });
   aiStatus(el.querySelector('#ai-status'));
+  crmBox(el.querySelector('#crm-status'));
   el.querySelector('#ai-remove')?.addEventListener('click', () => {
     localStorage.removeItem(AI_KEY);
     localStorage.removeItem('nma_api_key');
@@ -156,6 +163,34 @@ async function aiStatus(box) {
       : `<p><span class="badge warn">AI kurulmadı</span></p>
          <p class="small muted">Supabase panelinde nm-departmani → Edge Functions → Secrets bölümüne <code>ANTHROPIC_API_KEY</code> adıyla Claude API anahtarını ekle.
          Ya da aşağıdan yalnızca bu cihaz için kişisel anahtar gir.</p>`;
+}
+
+async function crmBox(box) {
+  const st = await crmStatus();
+  if (!st.linked) {
+    box.innerHTML = `<p><span class="badge">Bağlı değil</span></p>
+      <p class="small muted">WhatsApp bot CRM'in bu hesaba bağlı değil.</p>`;
+    return;
+  }
+  const last = st.last_sync_at ? new Date(st.last_sync_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'henüz yok';
+  box.innerHTML = `<p><span class="badge ok">Bağlı</span> ${st.linked_count || 0} aday WhatsApp konuşmasıyla eşleşti.</p>
+    <p class="small muted">Son senkron: ${esc(last)}${st.last_result ? ' — ' + esc(resultText(st.last_result)) : ''}</p>
+    <p class="small muted">Bot'a yazan yeni kişiler "WhatsApp bot" etiketiyle aday olur; telefonu listende olanlar mevcut adayla eşleşir.
+      Korunan (kişisel) rehber kişilerin yeni aday yapılmaz. Sağlık ve gelir notları hiç aktarılmaz.
+      Uygulama her 30 dakikada bir kendiliğinden senkronlar.</p>
+    <button class="btn btn-primary" type="button" id="crm-sync"><i class="ti ti-refresh" aria-hidden="true"></i> Şimdi senkronla</button>`;
+  box.querySelector('#crm-sync').addEventListener('click', async e => {
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = 'Senkronlanıyor…';
+    try {
+      const r = await crmSync();
+      toast(`Senkron tamam: ${resultText(r)}`);
+      await crmBox(box);
+    } catch (err) {
+      toast(`Senkron başarısız: ${err.message}`);
+      b.disabled = false; b.textContent = 'Tekrar dene';
+    }
+  });
 }
 
 function planName(plan) {

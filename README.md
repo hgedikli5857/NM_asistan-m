@@ -55,3 +55,12 @@ eski/                 eski NM Asistanı
 python3 -m http.server 8080
 # http://localhost:8080 adresini aç
 ```
+
+
+## WhatsApp bot CRM köprüsü (v3.1)
+- crm-panel (WhatsApp bot) verisi `crm` Edge Function üzerinden **salt-okunur** çekilir; erişim token'ı yalnızca `private.crm_links` içinde, tarayıcıya gitmez.
+- crm-panel tarafı: `supabase/crm-panel/20261120090000_nmd_kopru.sql` (`nmd_export`, `nmd_messages`; hash'lenmiş token).
+- Bot'a yazan yeni kişiler "WhatsApp bot" etiketli aday olur; telefonu listede olanlar mevcut adayla eşleşir (son 10 hane).
+- Korunan (kişisel rehber) kişiler yeni aday yapılmaz. `saglik_notlari`, `gelir_tahmini`, medeni durum, çocuk sayısı, yaş **hiç aktarılmaz**.
+- Aşama yalnızca ileri taşınır. Senkron: Ayarlar → "Şimdi senkronla" ya da Kazanım açılışında 30 dakikada bir otomatik.
+- Aday kartında bot konuşma özeti ve mesaj geçmişi; Bugün sekmesinde "WhatsApp'ta seni bekleyenler".
