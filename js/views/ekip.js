@@ -1,5 +1,5 @@
 // Ekip birimi: ekibim, soy ağacı, takvim (randevu + ekip etkinlikleri), sıralama, davet
-import { supabase, isLead } from '../supabase.js';
+import { supabase, isLead, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { relativeDay } from '../kazanim/model.js';
 import { buildTree } from '../ekip/tree.js';
@@ -49,7 +49,7 @@ async function load() {
   const [team, appts, prospects, invites] = await Promise.all([
     supabase.rpc('team_overview', { p_org: ctx.org.id }),
     supabase.from('appointments').select('*').gte('starts_at', from).order('starts_at').limit(300),
-    supabase.from('prospects').select('id, full_name, phone, instagram').is('deleted_at', null).order('full_name').limit(5000),
+    fetchAll(() => supabase.from('prospects').select('id, full_name, phone, instagram').is('deleted_at', null).order('full_name')),
     s.lead ? supabase.from('invitations').select('*').eq('org_id', ctx.org.id).order('created_at', { ascending: false }).limit(50)
       : Promise.resolve({ data: [] })
   ]);

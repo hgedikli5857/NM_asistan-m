@@ -40,7 +40,7 @@ Deno.serve(async (req: Request) => {
         }))
       : [];
     if (!messages.length || messages[0].role !== 'user') return json({ error: 'bad_request' }, 400);
-    const max_tokens = Math.min(Math.max(Number(body.max_tokens) || 400, 50), 1500);
+    const max_tokens = Math.min(Math.max(Number(body.max_tokens) || 400, 50), 3000);
 
     const admin = createClient(url, service);
     const { data: remaining, error } = await admin.rpc('ai_consume', { p_user: user.id, p_limit: DAILY_LIMIT });

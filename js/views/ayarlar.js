@@ -1,5 +1,5 @@
 // Profil ve hesap ayarları
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
 import { crmStatus, crmSync, resultText } from '../crm/client.js';
@@ -204,7 +204,9 @@ async function exportData(btn, kind) {
       'weekly_reviews', 'income_entries', 'kpi_targets', 'scripts', 'content_posts', 'academy_progress'];
     const out = {};
     for (const t of tables) {
-      const { data, error } = await supabase.from(t).select('*').limit(20000);
+      const { data, error } = ['kpi_targets', 'academy_progress'].includes(t)
+        ? await supabase.from(t).select('*').limit(1000)
+        : await fetchAll(() => supabase.from(t).select('*'));
       if (error) throw error;
       out[t] = data;
     }

@@ -1,5 +1,5 @@
 // İletişim birimi: mesaj oluştur, şablon kütüphanesi, itiraz rehberi
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
 import { checkMessage, fillTemplate } from '../iletisim/uyum.js';
@@ -45,8 +45,7 @@ export async function renderIletisim(target, context) {
   el.addEventListener('submit', onSubmit);
 
   const [p, s] = await Promise.all([
-    supabase.from('prospects').select('id, full_name, phone, instagram, stage, occupation, interests, notes, next_follow_up_at')
-      .is('deleted_at', null).order('full_name').limit(2000),
+    fetchAll(() => supabase.from('prospects').select('id, full_name, phone, instagram, stage, occupation, interests, notes, next_follow_up_at').is('deleted_at', null).order('full_name')),
     supabase.from('scripts').select('*').order('created_at', { ascending: false })
   ]);
   if (p.error) throw p.error;
@@ -458,7 +457,7 @@ Distribütörün anlattığı / adayın mesajı:
 «${input}»
 
 Yalnızca şu JSON ile cevap ver, başka metin yazma:
-{"analiz":"adayın gerçek kaygısı ve durumu, 2 cümle","niyet":"ilgili|kararsiz|itiraz|ilgisiz|belirsiz","sicaklik":"sicak|ilik|soguk","secenekler":[{"baslik":"kısa yaklaşım adı","mesaj":"gönderilecek mesaj"},{"baslik":"...","mesaj":"..."},{"baslik":"...","mesaj":"..."}],"sonraki_adim":"tek cümle","takip_gun":0}
+{"analiz":"adayın gerçek kaygısı ve durumu, en fazla 2 kısa cümle","niyet":"ilgili|kararsiz|itiraz|ilgisiz|belirsiz","sicaklik":"sicak|ilik|soguk","secenekler":[{"baslik":"kısa yaklaşım adı","mesaj":"gönderilecek mesaj, en fazla 3 kısa cümle"},{"baslik":"...","mesaj":"..."},{"baslik":"...","mesaj":"..."}],"sonraki_adim":"tek cümle","takip_gun":0}
 takip_gun 0-14 arası bir sayı olsun.`;
 }
 
@@ -477,8 +476,16 @@ async function suggestReply(form) {
     history = (data || []).filter(x => x.summary).map(x => `- ${new Date(x.occurred_at).toLocaleDateString('tr-TR')} ${x.kind}: ${String(x.summary).slice(0, 160)}`).join('\n');
   }
   try {
-    const out = extractJSON(await aiChat({ maxTokens: 900, messages: [{ role: 'user', content:
-      buildReplyPrompt({ goal: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history }) }] }));
+    const prompt = buildReplyPrompt({ goal: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history });
+    let out;
+    try {
+      out = extractJSON(await aiChat({ maxTokens: 1800, messages: [{ role: 'user', content: prompt }] }));
+    } catch (e) {
+      // Yanıt yarıda kesildiyse daha kısa yazmasını isteyip bir kez daha dene
+      if (!/yarım|anlaşılamadı/.test(e.message)) throw e;
+      out = extractJSON(await aiChat({ maxTokens: 1800, messages: [{ role: 'user', content:
+        prompt + '\n\nÖNEMLİ: Çok kısa yaz. Analiz 1 cümle, her mesaj en fazla 2 cümle. Yalnızca geçerli JSON.' }] }));
+    }
     if (!Array.isArray(out.secenekler) || !out.secenekler.length) throw new Error('Öneri gelmedi, tekrar dene.');
     out.secenekler = out.secenekler.slice(0, 3).map(o => ({ baslik: String(o.baslik || ''), mesaj: String(o.mesaj || '') }));
     out.takip_gun = Math.max(0, Math.min(14, Math.round(+out.takip_gun || 0)));

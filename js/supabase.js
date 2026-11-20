@@ -33,3 +33,16 @@ export function setActiveOrg(orgId) {
 }
 
 export const isLead = ctx => ['owner', 'leader'].includes(ctx?.membership?.role);
+
+// Supabase bir istekte en fazla 1000 satır döndürür; büyük listeleri sayfa sayfa çek.
+// make: her çağrıda yeni sorgu kuran fonksiyon. id ile ikincil sıralama sayfalar arası kaymayı önler.
+export async function fetchAll(make, { page = 1000, max = 50000 } = {}) {
+  let all = [];
+  for (let from = 0; from < max; from += page) {
+    const { data, error } = await make().order('id').range(from, from + page - 1);
+    if (error) return { data: null, error };
+    all = all.concat(data || []);
+    if (!data || data.length < page) break;
+  }
+  return { data: all, error: null };
+}

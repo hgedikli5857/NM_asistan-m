@@ -1,5 +1,5 @@
 // Ölçüm ve uyum birimi: göstergeler, haftalık hesap verme, gelir takibi, KVKK uyumu
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import {
   dailyMetrics, sumRange, keysBetween, lastDays, weekStart, monthStart, dayKey,
@@ -44,10 +44,10 @@ export async function renderOlcum(target, context) {
 async function load() {
   const since = d => new Date(Date.now() - d * 864e5).toISOString();
   const [inter, events, prospects, consents, targets, reviews, income] = await Promise.all([
-    supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since(365)).limit(10000),
-    supabase.from('stage_events').select('prospect_id, from_stage, to_stage, occurred_at').gte('occurred_at', since(120)).limit(10000),
-    supabase.from('prospects').select('id, full_name, stage, created_at, deleted_at').limit(5000),
-    supabase.from('consents').select('prospect_id, kind, granted').limit(10000),
+    fetchAll(() => supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since(365))),
+    fetchAll(() => supabase.from('stage_events').select('prospect_id, from_stage, to_stage, occurred_at').gte('occurred_at', since(120))),
+    fetchAll(() => supabase.from('prospects').select('id, full_name, stage, created_at, deleted_at')),
+    fetchAll(() => supabase.from('consents').select('prospect_id, kind, granted')),
     supabase.from('kpi_targets').select('*').eq('org_id', ctx.org.id).maybeSingle(),
     supabase.from('weekly_reviews').select('*').order('week_start', { ascending: false }).limit(12),
     supabase.from('income_entries').select('*').gte('month', dayKey(new Date(new Date().getFullYear() - 1, new Date().getMonth(), 1))).order('month', { ascending: false })

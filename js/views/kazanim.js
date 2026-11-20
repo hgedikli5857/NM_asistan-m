@@ -1,5 +1,5 @@
 // Kazanım birimi: Bugün listesi, Adaylar, Satış hunisi, aday kartı ve içe aktarma
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError, todayISO } from '../ui.js';
 import {
   STAGES, TEMPS, KINDS, CHANNELS, SOURCES, ACTIVE_STAGES, QUIET_DAYS,
@@ -59,7 +59,7 @@ export async function renderKazanim(target, context) {
 
 async function reload() {
   const [p, t] = await Promise.all([
-    supabase.from('prospects').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(10000),
+    fetchAll(() => supabase.from('prospects').select('*').is('deleted_at', null).order('updated_at', { ascending: false })),
     supabase.from('tasks').select('*').lte('due_date', todayISO()).order('created_at')
   ]);
   if (p.error) throw p.error;

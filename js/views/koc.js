@@ -1,5 +1,5 @@
 // Koç: Sponsor Claude sohbeti ve birlikte liste çalışması
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { aiChat, aiAvailable, extractJSON, ensureShareConsent, prospectBrief, firstName } from '../ai/client.js';
 import { COACH_SYSTEM, QUICK_PROMPTS, coachContext, coachMessages, LIST_FILTERS, pickBatch, listPrompt, normalizeSuggestions, FOLLOW_DAYS } from '../ai/coach.js';
@@ -46,10 +46,10 @@ export async function renderKoc(target, context) {
 async function loadData() {
   const since = d => new Date(Date.now() - d * 864e5).toISOString();
   const [p, i, e, t, r, inc, team, ac, ap] = await Promise.all([
-    supabase.from('prospects').select('id, full_name, stage, temperature, tags, occupation, interests, notes, last_contact_at, next_follow_up_at, created_at, deleted_at')
-      .is('deleted_at', null).limit(10000),
-    supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since(60)).limit(10000),
-    supabase.from('stage_events').select('prospect_id, from_stage, to_stage, occurred_at').gte('occurred_at', since(60)).limit(10000),
+    fetchAll(() => supabase.from('prospects').select('id, full_name, stage, temperature, tags, occupation, interests, notes, last_contact_at, next_follow_up_at, created_at, deleted_at')
+      .is('deleted_at', null)),
+    fetchAll(() => supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since(60))),
+    fetchAll(() => supabase.from('stage_events').select('prospect_id, from_stage, to_stage, occurred_at').gte('occurred_at', since(60))),
     supabase.from('kpi_targets').select('*').eq('org_id', ctx.org.id).maybeSingle(),
     supabase.from('weekly_reviews').select('score, actions, week_start').order('week_start', { ascending: false }).limit(1),
     supabase.from('income_entries').select('amount').eq('month', dayKey(monthStart())),
@@ -181,7 +181,7 @@ async function evaluate() {
   s.listBusy = true; s.error = ''; draw();
   try {
     const briefs = s.batch.map(p => prospectBrief(p));
-    const out = normalizeSuggestions(extractJSON(await aiChat({ maxTokens: 1500,
+    const out = normalizeSuggestions(extractJSON(await aiChat({ maxTokens: 2500,
       messages: [{ role: 'user', content: listPrompt(s.batch, briefs, s.notes) }] })), s.batch.length);
     if (!out.length) throw new Error('Öneri gelmedi, tekrar dene.');
     out.forEach(x => { s.sugg[s.batch[x.i].id] = x; });

@@ -1,5 +1,5 @@
 // Akademi: İlk 14 gün, 90 günlük program (dersler + quiz), rozetler
-import { supabase } from '../supabase.js';
+import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { FIRST_14, MODULES, LESSONS, lessonById, PASS_RATIO } from '../akademi/content.js';
 import { earnedBadges, programDay } from '../akademi/badges.js';
@@ -125,7 +125,7 @@ async function loadBadges(body) {
     head(supabase.from('stage_events').select('id', { count: 'exact', head: true }).eq('to_stage', 'davet').not('from_stage', 'is', null)),
     head(supabase.from('stage_events').select('id', { count: 'exact', head: true }).in('to_stage', ['musteri', 'is_ortagi']).not('from_stage', 'is', null)),
     head(supabase.from('weekly_reviews').select('id', { count: 'exact', head: true })),
-    supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since).limit(10000)
+    fetchAll(() => supabase.from('interactions').select('prospect_id, kind, occurred_at').gte('occurred_at', since))
   ]);
   const streak = activeStreak(dailyMetrics({ interactions: recent.data || [] }));
   const temel = LESSONS.filter(l => l.module === 'temel');
