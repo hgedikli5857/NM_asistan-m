@@ -50,22 +50,25 @@ export const LIST_FILTERS = {
   untouched: { label: 'Hiç temas edilmemiş', test: p => !p.last_contact_at && ['liste', 'temas'].includes(p.stage) },
   quiet: { label: 'Sessiz kalan sıcaklar', test: (p, now) => p.temperature === 'sicak' && ['liste', 'temas', 'davet', 'sunum', 'takip'].includes(p.stage)
     && (!p.last_contact_at || (now - new Date(p.last_contact_at)) / 864e5 >= 5) },
-  flagged: { label: '! işaretliler', test: p => (p.tags || []).includes('!') && !['musteri', 'is_ortagi', 'pasif'].includes(p.stage) },
   all: { label: 'Tüm açık adaylar', test: p => ['liste', 'temas', 'davet', 'sunum', 'takip'].includes(p.stage) }
 };
 
 export function pickBatch(prospects, filter, skip = new Set(), size = 10, now = new Date()) {
   const f = LIST_FILTERS[filter] || LIST_FILTERS.all;
-  return prospects.filter(p => !p.deleted_at && !skip.has(p.id) && f.test(p, now))
+  // "!" ile işaretli kişiler çalışma dışı gruptur; liste çalışmasına girmez
+  return prospects.filter(p => !p.deleted_at && !skip.has(p.id) && !isExcludedP(p) && f.test(p, now))
     .sort((a, b) => new Date(a.last_contact_at || 0) - new Date(b.last_contact_at || 0))
     .slice(0, size);
 }
+
+const isExcludedP = p => /^\s*!/.test(p.full_name || '') || (p.tags || []).includes('!');
 
 export function listPrompt(batch, briefs, userNotes = {}) {
   return `Liste çalışması yapıyoruz. Aşağıdaki ${batch.length} adayı birlikte gözden geçir ve her biri için öneri ver.
 ${ETHICS}
 Öncelik: 1 = bugün ulaş, 2 = bu hafta, 3 = bekleyebilir. Sıcaklık: sicak|ilik|soguk.
-"mesaj": o kişiye gönderilecek kısa, kişisel ilk temas ya da takip mesajı ({isim} yerine adını yaz).
+"mesaj": o kişiye gönderilecek kısa, kişisel takip mesajı ({isim} yerine adını yaz).
+Son teması "hiç" olan (daha önce yazışılmamış) kişiler için mesaj YAZMA, "mesaj" boş olsun; "ilk_adim" alanında ilk temas yolunu öner (ör. yüz yüze, ortak tanıdık, telefon).
 Kullanıcı bir kişi hakkında ek bilgi verdiyse onu mutlaka dikkate al.
 
 Adaylar:

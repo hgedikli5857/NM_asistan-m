@@ -32,7 +32,7 @@ export const SYSTEM_TEMPLATES = [
   { id: 's6', purpose: 'davet', relation: 'yakin', channel: 'WhatsApp', title: 'Merak uyandıran davet',
     body: '{isim}, son zamanlarda üzerinde çalıştığım bir şey var ve senin fikrini gerçekten merak ediyorum. 20 dakikanı ayırıp bir bakar mısın? Beğenmezsen de hiç sorun değil.' },
   { id: 's7', purpose: 'davet', relation: 'tanidik', channel: 'WhatsApp', title: 'Fikir sorma daveti',
-    body: 'Merhaba {isim}, sana açık açık sorayım: ek bir gelir kaynağı oluşturmaya açık mısın? Açıksan kısa bir görüşmede ne yaptığımı anlatayım, değilse hiç dert değil.' },
+    body: 'Merhaba {isim}, sana açık açık sorayım: kendi bireysel girişimini kurmaya açık mısın? Açıksan kısa bir görüşmede ne yaptığımı anlatayım, değilse hiç dert değil.' },
   { id: 's8', purpose: 'davet', relation: null, channel: 'WhatsApp', title: 'Online sunuma davet',
     body: '{isim}, bu perşembe akşam kısa bir online tanıtım yapıyoruz, 30 dakika sürüyor. Hem ürünleri hem iş modelini görebilirsin. Linki göndereyim mi?' },
   { id: 's9', purpose: 'davet', relation: null, channel: null, title: 'Ürün tanıtımına davet',
@@ -58,7 +58,7 @@ export const SYSTEM_TEMPLATES = [
 
   // ---------- Ekibe davet ----------
   { id: 's17', purpose: 'ekibe_davet', relation: null, channel: 'WhatsApp', title: 'Ürünü seven müşteriye iş fırsatı',
-    body: '{isim}, ürünlerden memnun kaldığını söylemiştin. Bunu çevrenle paylaşıp gelir elde etmenin de bir yolu var. Nasıl işlediğini 20 dakikada anlatayım mı? Sonra karar tamamen senin.' },
+    body: '{isim}, ürünlerden memnun kaldığını söylemiştin. Bunu çevrenle paylaşıp bireysel girişimcilik olarak yapmanın da bir yolu var. Nasıl işlediğini 20 dakikada anlatayım mı? Sonra karar tamamen senin.' },
   { id: 's18', purpose: 'ekibe_davet', relation: 'yakin', channel: 'WhatsApp', title: 'Birlikte çalışma teklifi',
     body: '{isim}, bu işi birlikte yapmayı gerçekten isterim. İnsanlarla iletişimin çok güçlü. Rakam vaadi vermeyeceğim; nasıl çalıştığımı ve ne kadar emek istediğini dürüstçe anlatayım. Konuşalım mı?' },
 
@@ -77,7 +77,7 @@ export const OBJECTIONS = [
     id: 'piramit', title: '"Bu piramit değil mi?"',
     behind: 'Kandırılmaktan korkuyor. Haklı bir soru; çevresinde kötü örnek görmüş olabilir.',
     steps: ['Soruyu takdir et, savunmaya geçme.', 'Farkı açıkla: piramitte satılan gerçek bir ürün yoktur, kazanç yalnızca üye kaydından gelir; Türkiye\'de yasaktır.', 'Kontrol etme yolunu göster: şirketin Ticaret Bakanlığı doğrudan satış yetki belgesini kendisi sorgulayabilir.', 'Görüşmeye davet et.'],
-    reply: '{isim}, bu soruyu sorman çok doğru, ben de başta sordum. Piramit sistemlerde gerçek bir ürün yoktur, para sadece yeni üyelerden gelir ve Türkiye\'de yasaktır. Bizde ürün satışı esastır. Şirketin doğrudan satış yetki belgesini Ticaret Bakanlığı üzerinden kendin de kontrol edebilirsin. İstersen birlikte bakalım.'
+    reply: '{isim}, bu soruyu sorman çok doğru, ben de başta sordum. Piramit sistemlerde gerçek bir ürün yoktur, para sadece yeni üye kaydından elde edilir ve Türkiye\'de yasaktır. Bizde ürün satışı esastır. Şirketin doğrudan satış yetki belgesini Ticaret Bakanlığı üzerinden kendin de kontrol edebilirsin. İstersen birlikte bakalım.'
   },
   {
     id: 'vakit', title: '"Vaktim yok"',
@@ -122,7 +122,7 @@ export const OBJECTIONS = [
     reply: '{isim}, işini bırakmanı kimse beklemiyor; ekipteki çoğu kişi işinin yanında yapıyor. Haftada ne kadar zaman ayırabileceğini konuşalım, ona göre gerçekçi bir başlangıç planı çıkaralım.'
   },
   {
-    id: 'denedim', title: '"Daha önce network marketing denedim, olmadı"',
+    id: 'denedim', title: '"Daha önce böyle bir iş denedim, olmadı"',
     behind: 'Kötü bir deneyim yaşamış. Önce dinle.',
     steps: ['Ne olduğunu sor ve dinle.', 'O deneyimden ne öğrendiğini sor.', 'Farklı yaklaşımını abartmadan anlat.'],
     reply: '{isim}, bunu paylaştığın için teşekkürler. Ne oldu, neden olmadı? Merak ediyorum, çünkü yaşadıkların çok değerli. Sonra benim nasıl çalıştığımı anlatayım, farkı kendin değerlendir.'
@@ -137,7 +137,7 @@ export const OBJECTIONS = [
     id: 'saglik', title: '"Sağlık sorunum var, işe yarar mı?"',
     behind: 'Bir çözüm arıyor. DİKKAT: Sağlık iddiası yapmak yasal ve etik risk taşır.',
     steps: ['Asla "tedavi eder, iyileştirir, geçirir" deme.', 'Ürünlerin ilaç olmadığını açıkça söyle.', 'Doktoruna danışmasını öner.', 'Sadece ürünün resmi açıklamasını paylaş.'],
-    reply: '{isim}, sağlığın her şeyden önemli. Şunu açıkça söylemeliyim: bu ürünler ilaç değil ve bir hastalığı tedavi ettiğini söyleyemem. Kullanmayı düşünürsen önce doktoruna danışmanı rica ederim. Ürünün resmi bilgilerini istersen paylaşırım.'
+    reply: '{isim}, sağlığın her şeyden önemli. Şunu açıkça söylemeliyim: bu ürünler ilaç değil ve sağlığınla ilgili bir söz veremem. Kullanmayı düşünürsen önce doktoruna danışmanı rica ederim. Ürünün resmi bilgilerini istersen paylaşırım.'
   },
   {
     id: 'ilgi', title: '"İlgilenmiyorum"',

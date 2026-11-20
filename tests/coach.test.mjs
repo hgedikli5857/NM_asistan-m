@@ -14,9 +14,11 @@ const ps = [
   { id: 'd', stage: 'musteri', temperature: 'sicak', tags: ['!'] }
 ];
 assert.deepEqual(c.pickBatch(ps, 'untouched', new Set(), 10, now).map(p => p.id), ['a']);
-assert.deepEqual(c.pickBatch(ps, 'quiet', new Set(), 10, now).map(p => p.id), ['b']);
-assert.deepEqual(c.pickBatch(ps, 'flagged', new Set(), 10, now).map(p => p.id), ['b']);
-assert.deepEqual(c.pickBatch(ps, 'all', new Set(['a']), 10, now).map(p => p.id), ['b', 'c']);
+// "!" işaretli kişiler (b) çalışma dışı: hiçbir listeye girmez
+assert.deepEqual(c.pickBatch(ps, 'quiet', new Set(), 10, now).map(p => p.id), []);
+assert.equal(c.LIST_FILTERS.flagged, undefined);
+assert.deepEqual(c.pickBatch(ps, 'all', new Set(['a']), 10, now).map(p => p.id), ['c']);
+assert.deepEqual(c.pickBatch([{ id: 'x', full_name: '!Ali', stage: 'liste' }], 'all', new Set(), 10, now), []);
 const n = c.normalizeSuggestions([{ i: 0, oncelik: 5, sicaklik: 'x', mesaj: 'm' }, { i: 9 }, { i: '1', oncelik: 1, sicaklik: 'sicak' }], 2);
 assert.deepEqual(n.map(x => [x.i, x.oncelik, x.sicaklik]), [[0, 2, null], [1, 1, 'sicak']]);
 const msgs = c.coachMessages('BAĞLAM', [{ role: 'user', content: 'soru' }, { role: 'assistant', content: 'cevap' }]);

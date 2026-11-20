@@ -1,10 +1,10 @@
 // Basit çevrimdışı önbellek: uygulama dosyaları önbellekten, veri her zaman internetten.
-const CACHE = 'nm-departmani-v3.1.1';
+const CACHE = 'nm-departmani-v3.2.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './icons/icon.svg',
   './css/tokens.css', './css/app.css',
   './js/app.js', './js/config.js', './js/supabase.js', './js/ui.js', './js/units.js',
-  './js/views/giris.js', './js/views/panel.js', './js/views/birim.js', './js/views/ayarlar.js', './js/views/kazanim.js', './js/kazanim/model.js', './js/views/iletisim.js', './js/iletisim/content.js', './js/iletisim/uyum.js', './js/views/olcum.js', './js/olcum/metrics.js', './js/views/ekip.js', './js/ekip/tree.js', './js/views/akademi.js', './js/akademi/content.js', './js/akademi/badges.js', './js/views/pazarlama.js', './js/pazarlama/content.js', './js/views/davet.js', './js/iletisim/pratik.js', './js/ui/picker.js', './js/ai/client.js', './js/ai/coach.js', './js/views/koc.js', './js/crm/client.js'
+  './js/views/giris.js', './js/views/panel.js', './js/views/birim.js', './js/views/ayarlar.js', './js/views/kazanim.js', './js/kazanim/model.js', './js/views/iletisim.js', './js/iletisim/content.js', './js/iletisim/uyum.js', './js/views/olcum.js', './js/olcum/metrics.js', './js/views/ekip.js', './js/ekip/tree.js', './js/views/akademi.js', './js/akademi/content.js', './js/akademi/badges.js', './js/views/pazarlama.js', './js/pazarlama/content.js', './js/views/davet.js', './js/iletisim/pratik.js', './js/ui/picker.js', './js/ai/client.js', './js/ai/coach.js', './js/views/koc.js', './js/crm/client.js', './js/iletisim/strateji.js'
 ];
 
 self.addEventListener('install', e => {

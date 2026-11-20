@@ -38,7 +38,8 @@ begin
     select distinct on (c.lead_id) c.lead_id, c.id, c.handler, c.handoff_status, c.handoff_reason,
            c.last_message_at, left(c.last_message_preview, 160) as preview, c.unread_count,
            c.meeting_start, c.meeting_method, c.form_completed_at,
-           (select count(*) from public.messages m where m.conversation_id = c.id) as msg_count
+           (select count(*) from public.messages m where m.conversation_id = c.id) as msg_count,
+           (select max(m.created_at) from public.messages m where m.conversation_id = c.id and m.direction = 'gelen') as last_in_at
     from public.conversations c
     order by c.lead_id, c.last_message_at desc nulls last
   )

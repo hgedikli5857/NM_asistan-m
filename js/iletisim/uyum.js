@@ -3,12 +3,36 @@
 // baskı yasak), gıda takviyesi / kozmetik ürünlerde sağlık beyanı kuralları.
 // Bu bir yardımcıdır, hukuki görüş değildir.
 
+// Marka filtresi (Mesaj Üretim Stratejisi, bölüm 2) + yasal uyum kuralları
 const RULES = [
+  {
+    cat: 'Yasak terim', level: 'yuksek',
+    tip: '"Network marketing", "MLM", "çok katmanlı" yerine her zaman "bireysel girişimcilik" de.',
+    patterns: [/network\s*marketing/i, /\bmlm\b/i, /çok\s*katmanl[ıi]/i, /ponzi/i, /\bnetwork\b/i],
+    fix: [[/network\s*marketing/gi, 'bireysel girişimcilik'], [/\bmlm\b/gi, 'bireysel girişimcilik'], [/çok\s*katmanl[ıi]\s*(pazarlama|satış)?/gi, 'bireysel girişimcilik']]
+  },
+  {
+    cat: 'Gelir ifadesi', level: 'yuksek',
+    tip: 'Kazanç, gelir, prim, hacim, kazanç planı gibi ifadeler kullanma. İşi "bireysel girişimcilik" olarak anlat.',
+    patterns: [/kazan[çc]/i, /kazan(ırsın|abilirsin|ırsınız|abilirsiniz|mak|dır|ıyor)/i, /\b(ek\s+)?gelir(i|in|ini|imi|ler|ler[ie])?\b(?!\s*m[iı])/i,
+      /\bprim(i|ler|leri)?\b/i, /\bhacim|hacmi/i, /\bpara\s*kazan/i]
+  },
+  {
+    cat: 'Ürün adı', level: 'orta',
+    tip: 'Ürün "patch" olarak anılır, "bant" değil.',
+    patterns: [/\bbant(lar|ları|ı|ın|lar[ıi]n)?\b/i],
+    fix: [[/\bbantlar[ıi]\b/gi, "patch'leri"], [/\bbantlar\b/gi, "patch'ler"], [/\bbant[ıi]\b/gi, "patch'i"], [/\bbant\b/gi, 'patch']]
+  },
+  {
+    cat: 'Abartı / garanti', level: 'orta',
+    tip: 'Abartı, "garanti" ve "fırsat kaçıyor" gibi aciliyet ifadeleri kullanma.',
+    patterns: [/garanti/i, /fırsat(ı|lar)?\s*(kaç|kaçır)/i, /kaçırılmayacak/i, /muhteşem|inanılmaz|harika\s*fırsat/i]
+  },
   {
     cat: 'Sağlık iddiası', level: 'yuksek',
     tip: 'Ürünler ilaç değildir. "Destekler", "kullanıcı deneyimi" gibi ifadeler bile dikkat ister; hastalık adı anma.',
     patterns: [
-      /tedavi\s*(eder|edi|ed[iı]yor|sağlar)/i, /iyile[şs]tir/i, /şifa/i, /\bgeçir(ir|di|iyor)/i,
+      /tedavi/i, /iyile[şs]/i, /hastal[ıi][kğ]/i, /şifa/i, /\bgeçir(ir|di|iyor)/i,
       /kanser/i, /diyabet|şeker hastal/i, /tansiyon/i, /kolesterol/i, /romatizma|fıtık|migren/i,
       /ilaç\s*(yerine|gibi|gerek)/i, /ilac[ıi]\s*b[ıi]rak/i, /ağr[ıi](y[ıi])?\s*(kes|geçir|yok\s*et|biter)/i,
       /kilo\s*verdir/i, /zayıflat/i, /bağışıklı[gğ][ıi]\s*güçlendir/i, /mucize/i
@@ -48,6 +72,22 @@ export function checkMessage(text) {
     if (hits.size) findings.push({ cat: rule.cat, level: rule.level, tip: rule.tip, hits: [...hits] });
   }
   return findings;
+}
+
+// Otomatik düzeltilebilen ifadeleri düzelt (ör. "network marketing" → "bireysel girişimcilik", "bant" → "patch")
+export function autoFix(text) {
+  let out = String(text || '');
+  for (const r of RULES) for (const [re, rep] of r.fix || []) out = out.replace(re, rep);
+  return out;
+}
+
+// Vazgeçen / ilgisiz kişiye soru gönderilmez
+export function checkForScenario(text, scenario) {
+  const f = checkMessage(text);
+  if (scenario === 'vazgecti' && /\?/.test(text)) {
+    f.push({ cat: 'Vazgeçen kişiye soru', level: 'yuksek', tip: 'Vazgeçen ya da ilgisiz olduğunu söyleyen kişiye soru sorma; teşekkür et, kapıyı açık bırak.', hits: ['?'] });
+  }
+  return f;
 }
 
 export function fillTemplate(body, { isim = '', ben = '' } = {}) {

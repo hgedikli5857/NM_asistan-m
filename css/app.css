@@ -539,3 +539,23 @@ code { font-family: var(--font-mono, monospace); font-size: .85em; background: v
 .chat .msg.out { align-self: flex-end; background: #dcf8c6; color: #10202b; border-bottom-right-radius: 4px; }
 .chat .who { font-size: 11px; opacity: .7; }
 .chat .body { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+
+/* Mesaj Üretim Stratejisi: alıcı, onay, geçmiş */
+.recipient { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin: -4px 0 14px; background: var(--surface-2); display: grid; gap: 6px; }
+.recipient .chips { gap: 6px; }
+.recipient .check { display: flex; gap: 8px; align-items: flex-start; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
+.approve.card-inset { border: 1px solid var(--gold-500); border-radius: var(--radius); padding: 14px; background: var(--gold-100); margin-top: 12px; }
+.approve textarea { background: var(--surface); }
+.uyum.warn { border-left: 3px solid var(--danger); padding: 6px 10px; background: #fbeceb; border-radius: var(--radius-sm); }
+.uyum.warn p { margin: 4px 0; }
+details.hist { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; }
+details.hist ol { padding-left: 18px; display: grid; gap: 8px; margin: 10px 0; }
+@media (prefers-color-scheme: dark) {
+  .uyum.warn { background: #3A1E1D; color: #F3C1BD; }
+  .chat .msg.out { background: #1E3A2B; color: var(--text); }
+}
+@media (prefers-color-scheme: dark) {
+  .badge { color: #C9D3EA; }
+  .badge.gold { color: #E3C27A; }
+}

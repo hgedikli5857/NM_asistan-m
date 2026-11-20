@@ -165,11 +165,11 @@ function listCard(p) {
       ${g.neden ? `<p><strong>Neden:</strong> ${esc(g.neden)}</p>` : ''}
       ${g.ilk_adim ? `<p><strong>İlk adım:</strong> ${esc(g.ilk_adim)}</p>` : ''}
       ${g.sicaklik && g.sicaklik !== p.temperature ? `<p class="small">Önerilen sıcaklık: <span class="badge ${TEMPS[g.sicaklik].cls}">${TEMPS[g.sicaklik].label}</span></p>` : ''}
-      ${g.mesaj ? `<blockquote>${esc(g.mesaj)}</blockquote>` : ''}
+      ${g.mesaj && p.last_contact_at ? `<blockquote>${esc(g.mesaj)}</blockquote>` : !p.last_contact_at ? '<p class="small muted">Daha önce yazışılmamış kişiye hazır metin önerilmez; önce ilk temas yolunu netleştir.</p>' : ''}
     </div>` : ''}
     <footer class="quick">
       ${g ? `<button class="btn btn-primary sm" data-apply="${p.id}"><i class="ti ti-check" aria-hidden="true"></i> Uygula (takip ${FOLLOW_DAYS[g.oncelik] === 0 ? 'bugün' : FOLLOW_DAYS[g.oncelik] + ' gün sonra'})</button>
-        <button class="btn btn-ghost sm" data-write="${p.id}"><i class="ti ti-message-2" aria-hidden="true"></i> Mesaj yaz</button>` : ''}
+        ${p.last_contact_at ? `<button class="btn btn-ghost sm" data-write="${p.id}"><i class="ti ti-message-2" aria-hidden="true"></i> Mesaj yaz</button>` : ''}` : ''}
       <button class="btn btn-ghost sm" data-skip="${p.id}">Atla</button>
     </footer>
   </article>`;

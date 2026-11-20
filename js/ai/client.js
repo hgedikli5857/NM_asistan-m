@@ -99,4 +99,4 @@ export function prospectBrief(p, now = new Date()) {
   ].filter(Boolean).join(' | ');
 }
 
-export const ETHICS = `Etik kurallar (kesinlikle uy): sağlık iddiası yok (tedavi eder, iyileştirir, hastalık adı yok); kazanç vaadi yok (rakam, garanti, kolay/pasif gelir yok); baskı ve acele ettirme yok; şeffaf ol, iş konusunu gizleme. Mesajlar kısa (en fazla 3 cümle), samimi, Türkçe. Amaç merak uyandırıp kısa bir görüşmeye davet etmek.`;
+export const ETHICS = `Etik ve marka kuralları (kesinlikle uy): "network marketing", "MLM", "çok katmanlı" deme, yalnızca "bireysel girişimcilik" de; kazanç, gelir, rakam, prim, hacim yok; sağlık iddiası yok (tedavi, iyileşme, hastalık adı yok), ürün "patch" diye anılır, "bant" değil; abartı, "garanti" ve baskı veren aciliyet yok; mesaj sonunda kolay bir çıkış bırak. Yeni kişiye "siz" diye hitap et. Mesajlar kısa (en fazla 3 cümle), sade, samimi, Türkçe.`;

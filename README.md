@@ -64,3 +64,13 @@ python3 -m http.server 8080
 - Korunan (kişisel rehber) kişiler yeni aday yapılmaz. `saglik_notlari`, `gelir_tahmini`, medeni durum, çocuk sayısı, yaş **hiç aktarılmaz**.
 - Aşama yalnızca ileri taşınır. Senkron: Ayarlar → "Şimdi senkronla" ya da Kazanım açılışında 30 dakikada bir otomatik.
 - Aday kartında bot konuşma özeti ve mesaj geçmişi; Bugün sekmesinde "WhatsApp'ta seni bekleyenler".
+
+## Mesaj Üretim Stratejisi (v3.2)
+Kurallar: `docs/mesaj-uretim-stratejisi.md`. Uygulama karşılığı: `js/iletisim/strateji.js` (senaryo, hitap, pencere, sınırlar) ve `js/iletisim/uyum.js` (marka filtresi).
+- Her AI çıktısı marka filtresinden geçer; takılanlar bir kez yeniden yazdırılır, yine takılırsa gösterilmez. Onay ekranında yasak ifade varken kopyala/WhatsApp kapalı.
+- Senaryolar: takip, ilgili, erteleme, kararsız, vazgeçti (soru yok, takip durur), maddi zorluk (satış yok).
+- Hitap varsayılanı "siz"; gönderen: kendi telefonu (Hakan olarak) ya da bot ("Hakan Bey'in dijital asistanı").
+- 24 saat penceresi CRM'deki son gelen mesajdan hesaplanır; bot numarasıyla pencere kapalıyken metin üretilmez.
+- Aynı kişiye 10 dakikada 1, günde 30 onay. Otomatik gönderim yok; gönderimden sonra Gönderildi / Cevap geldi / Vazgeçti işaretlenir.
+- "!" ile işaretli kişiler İletişim ve Koç liste çalışmasında listelenmez. Daha önce yazışılmamış kişiye metin önerilmez.
+- Üretilen metinler ve kullanıcının anlattığı durum kişi kartına yazılmaz; yalnızca bu cihazdaki "Geçmişim"de tutulur.
