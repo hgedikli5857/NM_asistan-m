@@ -641,3 +641,17 @@ details.hist ol { padding-left: 18px; display: grid; gap: 8px; margin: 10px 0; }
 .day-close .row input { flex: 1 1 240px; }
 .card-inset { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
 .qr-sec { margin-bottom: 16px; }
+
+/* Karusel Stüdyosu */
+.kar-compose .reel-stage canvas { aspect-ratio: 4 / 5; max-width: 360px; }
+.seg-sm { margin: 4px 0 14px; }
+.kar-slide summary { cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.kar-slide[open] summary { margin-bottom: 10px; }
+.kar-items { display: grid; gap: 8px; margin-bottom: 12px; }
+.kar-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; align-items: center; }
+.kar-photo { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.kar-photo img, .kar-ph { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gold-500); display: grid; place-items: center; background: var(--navy-100); font-size: 1.6rem; flex: none; }
+.kar-result { margin-top: 14px; display: grid; gap: 10px; }
+.kar-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.kar-thumbs img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+@media (max-width: 560px) { .kar-item { grid-template-columns: 1fr auto; } .kar-item input:first-child { grid-column: 1 / -1; } }

@@ -82,3 +82,10 @@ Yöntem: `docs/gunluk-calisma-yontemi.md`. Kod: `js/iletisim/masa.js` (öncelik,
 - **Panel kuyruğu**: pencere açıksa onaylanan metin CRM giden kutusuna eklenir ve hemen gönderilir (CRM'in 10 dk / 30 günlük kuralları geçerli). Pencere kapalıysa telefondan.
 - Kapanış mesajları ("teşekkürler", "iyi günler") ve 14 günden eski mesajlar kuyruğa girmez. "!" grupları ve eşleşmeyen kişisel kişiler gösterilmez.
 - crm-panel tarafı: `supabase/crm-panel/20261121150000_nmd_masa.sql` (`nmd_desk`, `nmd_outbox_add`, `nmd_quick_reply_add`).
+
+## Karusel Stüdyosu (v3.6)
+Pazarlama → Karusel. Motor: `js/pazarlama/karusel.js`.
+- İçerik: "Uygulama yazsın" (konu + sayfa sayısı, AI) ya da "Ben vereyim" (metni `---` ile böl; `[kapak] Rozet`, `# Başlık`, `== Şerit`, `- Etiket: metin`, `> Alıntı`). Düz metin için "AI düzenlesin" kullanıcının cümlelerini koruyarak sayfalara böler.
+- 6 düzen: kapak, ana fikir, üçlü kutu, satır listesi, adımlar, kapanış (web, WhatsApp kanalı, Instagram). `*kelime*` altın renkte yazılır.
+- 1080 × 1350 PNG'ler cihazda üretilir; "Instagram'da paylaş" tüm sayfaları tek seferde gönderir, ZIP indirme var. Fotoğraf yalnızca cihazda saklanır.
+- Marka filtresi tüm sayfa metnine uygulanır. Takvime `format = 'karusel'`, metinler `content_posts.carousel` sütununa kaydedilir.

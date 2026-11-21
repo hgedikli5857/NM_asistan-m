@@ -7,11 +7,15 @@ import { aiChat, aiAvailable, ETHICS, extractJSON } from '../ai/client.js';
 import { TEMPLATES, SCENE_COUNT, REEL_TOTAL, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
   reelFindings, aiStoryboardPrompt, parseAiStoryboard, suggestCaption, reelSupport, drawReelFrame, previewTime,
   loadClip, releaseClips, loadReelFonts, renderReel, reelFileName } from '../pazarlama/reels.js';
+import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
+  parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
+  shrinkPhoto, imageFromData } from '../pazarlama/karusel.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
   { id: 'fikir', label: 'Fikirler', icon: 'ti-bulb' },
   { id: 'reels', label: 'Reels', icon: 'ti-movie' },
+  { id: 'karusel', label: 'Karusel', icon: 'ti-carousel-horizontal' },
   { id: 'form', label: 'Aday formu', icon: 'ti-forms' },
   { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram' }
 ];
@@ -39,6 +43,7 @@ export async function renderPazarlama(target, context) {
   el.addEventListener('submit', onSubmit);
   el.addEventListener('change', onChange);
   initReel();
+  initKar();
   // AI hazır mı? (diyalog açılmadan önce biliniyor olsun)
   s.ai = await aiAvailable();
 
@@ -55,8 +60,9 @@ export async function renderPazarlama(target, context) {
 
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === s.tab));
-  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, reels: viewReels, form: viewForm, instagram: viewInstagram }[s.tab]();
+  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, reels: viewReels, karusel: viewKarusel, form: viewForm, instagram: viewInstagram }[s.tab]();
   if (s.tab === 'reels') afterReelDraw();
+  if (s.tab === 'karusel') kAfterDraw();
 }
 
 // ====================================================================
@@ -123,6 +129,7 @@ function postDialog(p = null, preset = {}) {
     </div>
     <footer class="sheet-foot">
       ${p ? '<button type="button" class="btn btn-ghost" data-act="del-post" data-id="' + p.id + '">Sil</button>' : ''}
+      ${p && p.carousel ? '<button type="button" class="btn btn-ghost" data-act="kar-open" data-id="' + p.id + '"><i class="ti ti-carousel-horizontal" aria-hidden="true"></i> Karusel stüdyosunda aç</button>' : ''}
       ${p && p.storyboard ? '<button type="button" class="btn btn-ghost" data-act="reel-open" data-id="' + p.id + '"><i class="ti ti-movie" aria-hidden="true"></i> Stüdyoda aç</button>' : ''}
       ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="ai-cap"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile yaz</button>' : ''}
       <button type="button" class="btn btn-ghost" data-act="copy-cap">Caption'ı kopyala</button>
@@ -246,6 +253,8 @@ function onClick(e) {
   if (idea) { const i = IDEAS[+idea.dataset.idea]; postDialog(null, { topic: i.topic, caption: i.caption, pillar: i.pillar }); return; }
   const cp = t.closest('[data-copy]');
   if (cp) { navigator.clipboard.writeText(cp.dataset.copy).then(() => toast('Kopyalandı.'), () => toast('Kopyalanamadı; elle seç.')); return; }
+  const km = t.closest('[data-kmode]');
+  if (km) { s.kar.mode = km.dataset.kmode; draw(); return; }
   const b = t.closest('[data-act]');
   if (!b) return;
   const id = b.dataset.id;
@@ -266,11 +275,26 @@ function onClick(e) {
     case 'reel-open': reelOpen(id); break;
     case 'reel-new': reelNew(); break;
     case 'reel-clear': reelClearClip(+b.dataset.i); break;
+    case 'kar-prev': s.kar.prev = +b.dataset.i; kMarkPrev(); kPaint(); break;
+    case 'kar-ai': kAi(b); break;
+    case 'kar-ai-struct': kAi(b, true); break;
+    case 'kar-parse': kParse(); break;
+    case 'kar-add': case 'kar-del': case 'kar-up': case 'kar-down': case 'kar-item-add': case 'kar-item-del':
+      kSlideOp(b.dataset.act, +b.dataset.i, +b.dataset.j); break;
+    case 'kar-render': kRender(b); break;
+    case 'kar-share': kShare(); break;
+    case 'kar-zip': kZip(b); break;
+    case 'kar-cal': kToCalendar(b); break;
+    case 'kar-copycap': navigator.clipboard.writeText(suggestCaptionK(s.kar.deck)).then(() => toast('Açıklama metni kopyalandı.'), () => toast('Kopyalanamadı.')); break;
+    case 'kar-open': kOpen(id); break;
+    case 'kar-new': kNew(); break;
+    case 'kar-photo-del': s.kar.photo = null; s.kar.photoData = ''; kSaveBrand(); kOutReset(); draw(); break;
   }
 }
 function onInput(e) {
   if (e.target.id === 'c-cap') updateCheck();
   if (e.target.dataset.reel) onReelInput(e.target);
+  if (e.target.dataset.k || e.target.dataset.kf || e.target.dataset.kb) onKarInput(e.target);
 }
 
 async function cycle(id) {
@@ -493,6 +517,8 @@ function onReelInput(t) {
 
 async function onChange(e) {
   const t = e.target;
+  if (t.id === 'k-photo') { kPhoto(t.files && t.files[0]); return; }
+  if (t.dataset.kb === 'handle') { t.value = normalizeBrand({ handle: t.value }).handle; return; }
   if (t.dataset.reel === 'quality') { s.reel.quality = +t.value; return; }
   if (t.dataset.reel === 'handle') { t.value = normalizeHandle(t.value); return; }
   if (t.dataset.reel === 'kw') { t.value = normalizeKeyword(t.value); return; }
@@ -602,4 +628,322 @@ function reelNew() {
   if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
   const q = s.reel.quality;
   initReel(); s.reel.quality = q; draw();
+}
+
+// ====================================================================
+// Karusel Stüdyosu: içerik (AI / kendi metnim / elle) → sayfa düzenleme → telefonda PNG üretimi → paylaş/indir/takvime ekle
+const kBrandKey = () => `nmd_karusel_brand_${ctx.user.id}`;
+function kLoadBrand() {
+  let b = {};
+  try { b = JSON.parse(localStorage.getItem(kBrandKey()) || '{}'); } catch { /* yok */ }
+  if (!b.handle) { try { b.handle = JSON.parse(localStorage.getItem(brandKey()) || '{}').handle || ''; } catch { /* yok */ } }
+  return b;
+}
+function kSaveBrand() {
+  const k = s.kar;
+  try { localStorage.setItem(kBrandKey(), JSON.stringify({ ...k.deck.brand, photo: k.photoData || '' })); }
+  catch { toast('Fotoğraf cihazda saklanamadı (alan dolu); bu oturumda kullanılacak.'); }
+}
+function initKar() {
+  const b = kLoadBrand();
+  s.kar = { deck: sampleDeck(b), postId: null, count: 8, mode: 'konu', paste: '', open: 0, prev: 0,
+    photoData: b.photo || '', photo: null, out: [], busy: false, sample: true };
+  imageFromData(s.kar.photoData).then(img => { s.kar.photo = img; if (s.tab === 'karusel') kPaint(); });
+}
+
+function viewKarusel() {
+  const k = s.kar, d = k.deck;
+  const saved = s.posts.filter(p => p.carousel).slice(-6).reverse();
+  return `
+    <div class="compose reel-compose kar-compose">
+      <section class="card reel-form">
+        <h2><i class="ti ti-carousel-horizontal" aria-hidden="true"></i> ${k.postId ? 'Karusel (takvimden)' : 'Yeni karusel'}</h2>
+        ${k.sample ? '<p class="small muted">Aşağıdaki örnek, beğendiğin karuselin yapısıyla hazırlandı. Konunu yaz ya da kendi metnini yapıştır.</p>' : ''}
+        <div class="seg seg-sm" role="tablist" aria-label="İçerik kaynağı">
+          <button role="tab" data-kmode="konu" aria-selected="${k.mode === 'konu'}"><i class="ti ti-sparkles" aria-hidden="true"></i> Uygulama yazsın</button>
+          <button role="tab" data-kmode="metin" aria-selected="${k.mode === 'metin'}"><i class="ti ti-clipboard-text" aria-hidden="true"></i> Ben vereyim</button>
+        </div>
+        ${k.mode === 'konu' ? `
+          <div class="form-2">
+            <div class="field"><label for="k-topic">Konu</label><input id="k-topic" data-kf="topic" maxlength="200" value="${esc(d.topic)}" placeholder="Ör. Soru sorarak güven kurmak"></div>
+            <div class="field"><label for="k-count">Sayfa sayısı</label><select id="k-count" data-kf="count">${[5, 6, 7, 8, 9, 10].map(n => `<option ${k.count === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+          </div>
+          ${s.ai ? `<button type="button" class="btn btn-primary" data-act="kar-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile karusel yaz</button>`
+            : '<p class="small muted">AI kurulu değil; "Ben vereyim" ile kendi metnini kullanabilirsin.</p>'}`
+        : `
+          <div class="field"><label for="k-paste">Metnin</label>
+            <textarea id="k-paste" data-kf="paste" rows="9" placeholder="Sayfaları --- ile ayır.\n[kapak] 8 Sayfalık Rehber\n# Başlık (altın için *kelime*)\n== Altın şerit cümlesi\nParagraf metni...\n- Etiket: madde\n> Alt alıntı *vurgu*\n---\n# İkinci sayfa...">${esc(k.paste)}</textarea></div>
+          <div class="quick">
+            <button type="button" class="btn btn-primary" data-act="kar-parse"><i class="ti ti-layout-list" aria-hidden="true"></i> Sayfalara böl</button>
+            ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="kar-ai-struct"><i class="ti ti-sparkles" aria-hidden="true"></i> AI düzenlesin (kelimelerimi korusun)</button>' : ''}
+          </div>
+          <p class="small muted">Düz paragraf da yapıştırabilirsin; "AI düzenlesin" sayfalara böler, senin cümlelerini korur.</p>`}
+
+        <details class="reel-brand"${d.brand.web || d.brand.handle ? '' : ' open'}><summary>Marka ve fotoğraf</summary>
+          <div class="kar-photo">
+            ${k.photoData ? `<img src="${k.photoData}" alt="Karusel fotoğrafı">` : '<span class="kar-ph"><i class="ti ti-user" aria-hidden="true"></i></span>'}
+            <div><label class="btn btn-ghost" for="k-photo"><i class="ti ti-photo-plus" aria-hidden="true"></i> ${k.photoData ? 'Fotoğrafı değiştir' : 'Fotoğraf ekle'}</label>
+              <input type="file" id="k-photo" accept="image/*" class="sr-only">
+              ${k.photoData ? '<button type="button" class="link-btn" data-act="kar-photo-del">Kaldır</button>' : ''}
+              <p class="small muted">Sol üst köşede görünür (portre önerilir). Yalnızca bu cihazda saklanır.</p></div>
+          </div>
+          <div class="form-2">
+            <div class="field"><label for="k-web">Web sitesi</label><input id="k-web" data-kb="web" maxlength="60" value="${esc(d.brand.web)}" placeholder="www.siteniz.com" autocapitalize="off"></div>
+            <div class="field"><label for="k-handle">Instagram</label><input id="k-handle" data-kb="handle" maxlength="31" value="${esc(d.brand.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
+          </div>
+          <div class="field"><label for="k-wa">WhatsApp kanal bağlantısı</label><input id="k-wa" data-kb="wa" maxlength="120" value="${esc(d.brand.wa)}" placeholder="https://whatsapp.com/channel/..." autocapitalize="off"></div>
+          <div class="field"><label for="k-follow">"Bizi takip edin" açıklaması</label><input id="k-follow" data-kb="follow" maxlength="140" value="${esc(d.brand.follow)}"></div>
+        </details>
+
+        <h3 style="margin-top:16px">Sayfalar <span class="badge">${d.slides.length}</span></h3>
+        ${d.slides.map((sl, i) => kSlideEditor(sl, i, d.slides.length)).join('')}
+        ${d.slides.length < MAX_SLIDES ? '<button type="button" class="btn btn-ghost" data-act="kar-add"><i class="ti ti-plus" aria-hidden="true"></i> Sayfa ekle</button>' : ''}
+        <div id="k-check"></div>
+      </section>
+
+      <section class="card reel-side">
+        <h2><i class="ti ti-device-mobile" aria-hidden="true"></i> Önizleme</h2>
+        <div class="reel-stage"><canvas id="k-canvas" width="540" height="675" aria-label="Karusel sayfa önizlemesi"></canvas></div>
+        <div class="chips reel-prev-chips" role="group" aria-label="Önizlenecek sayfa">
+          ${d.slides.map((_, i) => `<button class="chip" data-act="kar-prev" data-i="${i}" aria-pressed="${k.prev === i}">${i + 1}</button>`).join('')}
+        </div>
+        <div class="reel-bar" aria-hidden="true"><span id="k-prog"></span></div>
+        <button type="button" class="btn btn-gold reel-go" data-act="kar-render" ${k.busy || !d.slides.length ? 'disabled' : ''}><i class="ti ti-photo-down" aria-hidden="true"></i> ${k.busy ? 'Üretiliyor…' : `${d.slides.length} görseli üret`}</button>
+        <div id="k-out">${kOutHtml()}</div>
+        <div class="quick" style="margin-top:12px">
+          <button type="button" class="btn btn-ghost" data-act="kar-cal"><i class="ti ti-calendar-plus" aria-hidden="true"></i> ${k.postId ? 'Takvimde güncelle' : 'Takvime kaydet'}</button>
+          <button type="button" class="btn btn-ghost" data-act="kar-copycap"><i class="ti ti-copy" aria-hidden="true"></i> Açıklama metnini kopyala</button>
+          <button type="button" class="btn btn-ghost" data-act="kar-new"><i class="ti ti-file-plus" aria-hidden="true"></i> Yeni karusel</button>
+        </div>
+        <p class="error" id="k-error" role="alert"></p>
+        ${saved.length ? `<h3 style="margin-top:18px">Kayıtlı karuseller</h3>
+          <ul class="entry-list">${saved.map(p => `<li><button class="link-btn" data-act="kar-open" data-id="${p.id}">${esc(p.topic)}</button>
+            <span class="small muted">${esc(new Date(p.planned_for).toLocaleDateString('tr-TR'))} · ${POST_STATUS[p.status]}</span></li>`).join('')}</ul>` : ''}
+      </section>
+    </div>
+    <p class="small muted" style="margin-top:12px">Görseller telefonunda üretilir (1080 × 1350, Instagram dikey). "Instagram'da paylaş" tüm sayfaları tek seferde gönderir; Instagram'da gönderi olarak seçip karusel yapabilirsin.</p>`;
+}
+
+function kSlideEditor(sl, i, n) {
+  const open = s.kar.open === i;
+  const items = sl.layout === 'uclu' || sl.layout === 'liste' || sl.layout === 'adim';
+  const maxItems = sl.layout === 'liste' ? 4 : 3;
+  return `<details class="reel-scene kar-slide" data-slide="${i}" ${open ? 'open' : ''}>
+    <summary><span class="q-no">${i + 1}</span> <strong>${esc(LAYOUTS[sl.layout].label)}</strong> <span class="muted small">${esc((sl.title || '').replace(/\*/g, '').slice(0, 44))}</span></summary>
+    <div class="form-2">
+      <div class="field"><label>Düzen</label><select data-k="layout" data-i="${i}">${Object.entries(LAYOUTS).map(([key, v]) => `<option value="${key}" ${sl.layout === key ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
+      <div class="field"><label>Simge</label><select data-k="emblem" data-i="${i}">${Object.entries(EMBLEMS).map(([key, v]) => `<option value="${key}" ${sl.emblem === key ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>Rozet</label><input data-k="badge" data-i="${i}" maxlength="34" value="${esc(sl.badge)}" placeholder="Ör. 2. Öne Çıkan Strateji"></div>
+    <div class="field"><label>Başlık <span class="muted small">(*kelime* altın olur)</span></label><textarea data-k="title" data-i="${i}" rows="2" maxlength="80">${esc(sl.title)}</textarea></div>
+    ${['kapak', 'liste', 'fikir'].includes(sl.layout) ? `<div class="field"><label>Altın şerit (isteğe bağlı)</label><input data-k="ribbon" data-i="${i}" maxlength="120" value="${esc(sl.ribbon)}"></div>` : ''}
+    <div class="field"><label>Paragraf</label><textarea data-k="body" data-i="${i}" rows="3" maxlength="460">${esc(sl.body)}</textarea></div>
+    ${items ? `<div class="kar-items">${sl.items.map((it, j) => `<div class="kar-item">
+        <input data-k="label" data-i="${i}" data-j="${j}" maxlength="26" value="${esc(it.label)}" placeholder="Etiket" aria-label="Madde ${j + 1} etiketi">
+        <input data-k="text" data-i="${i}" data-j="${j}" maxlength="120" value="${esc(it.text)}" placeholder="Metin" aria-label="Madde ${j + 1} metni">
+        <button type="button" class="icon-btn" data-act="kar-item-del" data-i="${i}" data-j="${j}" aria-label="Maddeyi sil"><i class="ti ti-x" aria-hidden="true"></i></button></div>`).join('')}
+      ${sl.items.length < maxItems ? `<button type="button" class="link-btn" data-act="kar-item-add" data-i="${i}">+ Madde ekle</button>` : ''}</div>` : ''}
+    <div class="field"><label>Alt alıntı <span class="muted small">(*vurgu*)</span></label><input data-k="quote" data-i="${i}" maxlength="96" value="${esc(sl.quote)}"></div>
+    <div class="quick">
+      <button type="button" class="icon-btn" data-act="kar-up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Yukarı taşı"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>
+      <button type="button" class="icon-btn" data-act="kar-down" data-i="${i}" ${i === n - 1 ? 'disabled' : ''} aria-label="Aşağı taşı"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>
+      <button type="button" class="icon-btn" data-act="kar-del" data-i="${i}" ${n <= MIN_SLIDES ? 'disabled' : ''} aria-label="Sayfayı sil"><i class="ti ti-trash" aria-hidden="true"></i></button>
+    </div>
+  </details>`;
+}
+
+function kOutHtml() {
+  const out = s.kar.out;
+  if (!out.length) return '';
+  const files = out.map(o => new File([o.blob], o.name, { type: 'image/png' }));
+  const canShare = !!(navigator.canShare && navigator.canShare({ files }));
+  return `<div class="kar-result">
+    <div class="kar-thumbs">${out.map((o, i) => `<a href="${o.url}" download="${esc(o.name)}" title="${i + 1}. sayfayı indir"><img src="${o.url}" alt="${i + 1}. sayfa"></a>`).join('')}</div>
+    <div class="quick">
+      ${canShare ? '<button type="button" class="btn btn-gold" data-act="kar-share"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram\'da paylaş</button>' : ''}
+      <button type="button" class="btn btn-ghost" data-act="kar-zip"><i class="ti ti-file-zip" aria-hidden="true"></i> Hepsini indir (ZIP)</button>
+    </div>
+    <p class="small muted">Tek sayfayı indirmek için küçük resme dokun.</p></div>`;
+}
+
+function kAfterDraw() { kCheck(); kPaint(); }
+let kQueued = false;
+async function kPaint() {
+  if (kQueued) return; kQueued = true;
+  await loadDeckFonts();
+  requestAnimationFrame(() => {
+    kQueued = false;
+    const cv = el.querySelector('#k-canvas'); const k = s.kar;
+    if (!cv || !k.deck.slides.length) return;
+    const c = cv.getContext('2d');
+    c.save(); c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    drawSlide(c, k.deck, Math.min(k.prev, k.deck.slides.length - 1), k.photo);
+    c.restore();
+  });
+}
+function kMarkPrev() { el.querySelectorAll('[data-act="kar-prev"]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.i === s.kar.prev)); }
+function kCheck() {
+  const box = el.querySelector('#k-check'); if (!box) return;
+  const f = deckFindings(s.kar.deck);
+  box.innerHTML = f.length ? `<div class="check-box warn">${f.map(x => `<p><strong>${esc(x.cat)}:</strong> "${x.hits.map(esc).join('", "')}" — ${esc(x.tip)}</p>`).join('')}</div>`
+    : '<div class="check-box ok"><i class="ti ti-shield-check" aria-hidden="true"></i> Marka ve uyum kontrolü: sorun görünmüyor</div>';
+}
+function kOutReset() { for (const o of s.kar.out) URL.revokeObjectURL(o.url); s.kar.out = []; const b = el.querySelector('#k-out'); if (b) b.innerHTML = ''; }
+
+// Yazarken yeniden çizme: durumu, kontrolü ve önizlemeyi güncelle
+function onKarInput(t) {
+  const k = s.kar;
+  if (t.dataset.kf === 'topic') { k.deck.topic = t.value.slice(0, 200); return; }
+  if (t.dataset.kf === 'paste') { k.paste = t.value; return; }
+  if (t.dataset.kf === 'count') { k.count = +t.value; return; }
+  if (t.dataset.kb) {
+    k.deck.brand = normalizeBrand({ ...k.deck.brand, [t.dataset.kb]: t.value });
+    kSaveBrand(); kOutReset();
+    const last = k.deck.slides.length - 1; if (k.deck.slides[last]?.layout === 'kapanis') { k.prev = last; kMarkPrev(); }
+    kPaint(); return;
+  }
+  const key = t.dataset.k; if (!key) return;
+  const i = +t.dataset.i, sl = { ...k.deck.slides[i], items: k.deck.slides[i].items.map(x => ({ ...x })) };
+  if (key === 'label' || key === 'text') sl.items[+t.dataset.j][key] = t.value;
+  else sl[key] = t.value;
+  k.deck.slides[i] = normalizeSlide(sl, i, k.deck.slides.length);
+  k.sample = false; k.prev = i; k.open = i; kOutReset(); kMarkPrev(); kCheck(); kPaint();
+  if (key === 'layout') draw();
+}
+
+function kSet(deck, msg) {
+  const k = s.kar;
+  k.deck = normalizeDeck({ ...deck, brand: k.deck.brand }); k.prev = 0; k.open = 0; k.sample = false; kOutReset(); draw();
+  if (msg) toast(msg);
+}
+
+async function kAi(btn, structure = false) {
+  const k = s.kar, err = el.querySelector('#k-error');
+  const src = structure ? k.paste.trim() : k.deck.topic.trim();
+  if (src.length < 4) { err.textContent = structure ? 'Önce metnini yapıştır.' : 'Önce konuyu yaz.'; return; }
+  err.textContent = '';
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
+  try {
+    const prompt = structure ? aiStructurePrompt(src) : aiDeckPrompt(src, k.count);
+    let j;
+    try { j = extractJSON(await aiChat({ maxTokens: 3000, messages: [{ role: 'user', content: prompt }] })); }
+    catch (e) {
+      if (!/yarım|anlaşılamadı/.test(e.message)) throw e;
+      j = extractJSON(await aiChat({ maxTokens: 3000, messages: [{ role: 'user', content: prompt + '\nÖNEMLİ: Daha kısa yaz; paragraflar en fazla 200 karakter. Yalnızca geçerli JSON.' }] }));
+    }
+    const deck = parseAiDeck(j, { ...k.deck, topic: structure ? (k.deck.topic || '') : src });
+    if (!deck.topic) deck.topic = String(deck.slides[0]?.title || '').replace(/\*/g, '').slice(0, 200);
+    kSet(deck, 'Karusel hazır; sayfaları kendi diline göre düzenle.');
+  } catch (e) {
+    const box = el.querySelector('#k-error'); if (box) box.textContent = 'AI: ' + e.message;
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+function kParse() {
+  const k = s.kar, err = el.querySelector('#k-error');
+  const deck = parseDeckText(k.paste, k.deck.brand);
+  if (deck.slides.length < MIN_SLIDES) { err.textContent = `En az ${MIN_SLIDES} sayfa gerekli. Sayfaları --- ile ayır ya da "AI düzenlesin"i kullan.`; return; }
+  if (!deck.topic) deck.topic = String(deck.slides[0]?.title || '').replace(/\*/g, '').slice(0, 200);
+  kSet(deck, `${deck.slides.length} sayfa oluşturuldu.`);
+}
+
+function kSlideOp(act, i, j) {
+  const k = s.kar, sl = k.deck.slides;
+  if (act === 'kar-add') { sl.push(normalizeSlide({ layout: 'fikir', badge: `${sl.length}. Bölüm`, title: 'Yeni sayfa', body: '' }, sl.length, sl.length + 2)); k.open = sl.length - 1; k.prev = k.open; }
+  if (act === 'kar-del' && sl.length > MIN_SLIDES) { sl.splice(i, 1); k.prev = Math.min(k.prev, sl.length - 1); }
+  if (act === 'kar-up' && i > 0) { [sl[i - 1], sl[i]] = [sl[i], sl[i - 1]]; k.open = i - 1; k.prev = i - 1; }
+  if (act === 'kar-down' && i < sl.length - 1) { [sl[i + 1], sl[i]] = [sl[i], sl[i + 1]]; k.open = i + 1; k.prev = i + 1; }
+  if (act === 'kar-item-add') { sl[i].items.push({ label: '', text: 'Yeni madde' }); k.open = i; }
+  if (act === 'kar-item-del') { sl[i].items.splice(j, 1); sl[i] = normalizeSlide(sl[i], i, sl.length); k.open = i; }
+  k.sample = false; kOutReset(); draw();
+}
+
+async function kRender(btn) {
+  const k = s.kar, err = el.querySelector('#k-error');
+  const risky = deckFindings(k.deck).filter(x => x.level === 'yuksek');
+  if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; err.textContent = 'Metinde marka kuralına takılan ifade var. Düzelt ya da yine de üretmek için tekrar dokun.'; return; }
+  err.textContent = ''; btn.dataset.confirm = '';
+  kOutReset(); k.busy = true; btn.disabled = true; btn.textContent = 'Üretiliyor…';
+  try {
+    const res = await renderDeck(k.deck, k.photo, p => { const b = el.querySelector('#k-prog'); if (b) b.style.width = Math.round(p * 100) + '%'; });
+    k.out = res.map(r => ({ ...r, url: URL.createObjectURL(r.blob) }));
+    toast(`${k.out.length} görsel hazır.`);
+  } catch (e) { const x = el.querySelector('#k-error'); if (x) x.textContent = 'Üretilemedi: ' + e.message; }
+  k.busy = false;
+  if (s.tab === 'karusel') draw();
+}
+
+async function kShare() {
+  const files = s.kar.out.map(o => new File([o.blob], o.name, { type: 'image/png' }));
+  const text = suggestCaptionK(s.kar.deck);
+  try { await navigator.clipboard?.writeText(text); } catch { /* izin yok */ }
+  try { await navigator.share({ files, text }); toast('Açıklama metni panoya da kopyalandı.'); }
+  catch (e) { if (e.name !== 'AbortError') toast('Paylaşılamadı; ZIP olarak indirip galeriden paylaşabilirsin.'); }
+}
+
+async function kZip(btn) {
+  const out = s.kar.out; if (!out.length) return;
+  btn.disabled = true;
+  try {
+    const { default: JSZip } = await import('https://esm.sh/jszip@3.10.1');
+    const zip = new JSZip();
+    out.forEach(o => zip.file(o.name, o.blob));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = out[0].name.replace(/-01\.png$/, '.zip'); document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch {
+    // ZIP yüklenemezse tek tek indir
+    for (const o of out) { const a = document.createElement('a'); a.href = o.url; a.download = o.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 350)); }
+  }
+  btn.disabled = false;
+}
+
+async function kToCalendar(btn) {
+  const k = s.kar, err = el.querySelector('#k-error');
+  err.textContent = ''; btn.disabled = true;
+  const topic = (k.deck.topic.trim() || String(k.deck.slides[0]?.title || 'Karusel').replace(/\*/g, '')).slice(0, 200);
+  const carousel = { ...k.deck, topic };
+  const row = { topic, format: 'karusel', carousel };
+  const q = k.postId ? supabase.from('content_posts').update(row).eq('id', k.postId).select().single()
+    : supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, planned_for: todayISO(), platform: 'Instagram',
+      pillar: 'ogretici', status: k.out.length ? 'hazir' : 'taslak', caption: suggestCaptionK(k.deck) }).select().single();
+  const { data, error } = await q;
+  btn.disabled = false;
+  if (error) { err.textContent = trError(error); return; }
+  s.posts = (k.postId ? s.posts.map(x => (x.id === data.id ? data : x)) : [...s.posts, data]).sort((a, b) => (a.planned_for < b.planned_for ? -1 : 1));
+  k.postId = data.id; k.deck.topic = data.topic;
+  draw();
+  toast(k.out.length ? 'Karusel takvime "Hazır" olarak kaydedildi.' : 'Karusel takvime taslak olarak kaydedildi.');
+}
+
+function kOpen(id) {
+  const p = s.posts.find(x => x.id === id);
+  if (!p || !p.carousel) return;
+  const dlg = el.querySelector('#p-dialog'); if (dlg?.open) dlg.close();
+  kOutReset();
+  const brand = s.kar.deck.brand;
+  s.kar.deck = normalizeDeck({ ...p.carousel, brand: { ...brand, ...(p.carousel.brand || {}) } });
+  s.kar.postId = p.id; s.kar.prev = 0; s.kar.open = 0; s.kar.sample = false;
+  s.tab = 'karusel'; history.replaceState(null, '', '#/pazarlama?tab=karusel'); draw();
+}
+
+function kNew() {
+  if (s.kar.busy) return;
+  kOutReset();
+  const { photo, photoData } = s.kar, brand = s.kar.deck.brand;
+  initKar(); s.kar.photo = photo; s.kar.photoData = photoData;
+  s.kar.deck = sampleDeck(brand);
+  draw();
+}
+
+async function kPhoto(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { toast('Bir fotoğraf seç.'); return; }
+  try {
+    s.kar.photoData = await shrinkPhoto(file);
+    s.kar.photo = await imageFromData(s.kar.photoData);
+    kSaveBrand(); kOutReset(); draw();
+  } catch (e) { toast(e.message); }
 }

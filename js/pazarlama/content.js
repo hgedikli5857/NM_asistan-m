@@ -8,7 +8,7 @@ export const PILLARS = [
 ];
 export const pillarLabel = id => PILLARS.find(p => p.id === id)?.label || '—';
 
-export const FORMATS = { gonderi: 'Gönderi', reels: 'Reels', story: 'Story', canli: 'Canlı yayın', video: 'Video' };
+export const FORMATS = { gonderi: 'Gönderi', reels: 'Reels', karusel: 'Karusel', story: 'Story', canli: 'Canlı yayın', video: 'Video' };
 export const PLATFORMS = ['Instagram', 'Facebook', 'TikTok', 'YouTube', 'LinkedIn', 'WhatsApp durum'];
 export const POST_STATUS = { fikir: 'Fikir', taslak: 'Taslak', hazir: 'Hazır', paylasildi: 'Paylaşıldı' };
 
