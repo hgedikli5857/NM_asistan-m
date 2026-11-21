@@ -21,7 +21,8 @@ export function appsScript(token) {
   return `// NM Departmanı → Google Takvim köprüsü
 // Kurulum: script.google.com → Yeni proje → bu kodu yapıştır → Kaydet → "kur" fonksiyonunu seç → Çalıştır → izin ver.
 // Uygulamadakiler "NM Departmanı" adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz.
-// Kendi takvimindeki etkinlikler (yalnızca okunur) uygulamanın Ajanda'sında görünür. 15 dakikada bir güncellenir.
+// Kendi takvimindeki etkinlikler (yalnızca okunur) uygulamanın Ajanda'sında görünür.
+// Uygulama → takvim: 1 dakika içinde. Takvim → uygulama: değişiklik anında.
 const NMD_URL = '${SUPABASE_URL}/rest/v1/rpc/gcal_feed';
 const NMD_KEY = '${SUPABASE_KEY}';
 const NMD_TOKEN = '${token}';
@@ -57,6 +58,14 @@ function olustur_(cal, it) {
   ev.setTag('nmd_h', imza_(it));
 }
 
+function rpc_(fn, body) {
+  return UrlFetchApp.fetch(NMD_URL.replace('gcal_feed', fn), {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { apikey: NMD_KEY, Authorization: 'Bearer ' + NMD_KEY },
+    payload: JSON.stringify(Object.assign({ p_token: NMD_TOKEN }, body || {}))
+  });
+}
+
 // Kendi (birincil) Google takviminden etkinlikleri uygulamanın Ajanda'sına gönderir
 function ajandayaGonder_() {
   const from = new Date(); from.setDate(from.getDate() - 7); from.setHours(0, 0, 0, 0);
@@ -68,21 +77,13 @@ function ajandayaGonder_() {
       title: ev.getTitle(), start: ev.getStartTime().toISOString(), end: ev.getEndTime().toISOString(),
       allDay: ev.isAllDayEvent(), location: ev.getLocation() || '', description: (ev.getDescription() || '').slice(0, 2000)
     }));
-  const res = UrlFetchApp.fetch(NMD_URL.replace('gcal_feed', 'gcal_push'), {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { apikey: NMD_KEY, Authorization: 'Bearer ' + NMD_KEY },
-    payload: JSON.stringify({ p_token: NMD_TOKEN, p_from: from.toISOString(), p_to: to.toISOString(), p_events: evs })
-  });
+  const res = rpc_('gcal_push', { p_from: from.toISOString(), p_to: to.toISOString(), p_events: evs });
   console.log("Ajanda'ya gönderilen Google etkinliği: " + evs.length + ' (' + res.getResponseCode() + ')');
 }
 
-function senkronize() {
-  try { ajandayaGonder_(); } catch (e) { console.error('Ajanda gönderimi: ' + e); }
-  const res = UrlFetchApp.fetch(NMD_URL, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { apikey: NMD_KEY, Authorization: 'Bearer ' + NMD_KEY },
-    payload: JSON.stringify({ p_token: NMD_TOKEN })
-  });
+// Uygulamadakileri "NM Departmanı" takvimine yazar
+function takvimiYaz_() {
+  const res = rpc_('gcal_feed');
   if (res.getResponseCode() !== 200) throw new Error('Akış alınamadı: ' + res.getContentText());
   const feed = JSON.parse(res.getContentText());
   const cal = takvim_();
@@ -97,18 +98,60 @@ function senkronize() {
   plan.update.forEach(it => { evs[it.id].deleteEvent(); olustur_(cal, it); });
   plan.create.forEach(it => olustur_(cal, it));
   plan.remove.forEach(id => evs[id].deleteEvent());
-  console.log('Yeni: ' + plan.create.length + ' · Güncellenen: ' + plan.update.length + ' · Silinen: ' + plan.remove.length + ' · Aynı: ' + plan.keep.length);
+  console.log('Takvim: yeni ' + plan.create.length + ' · güncellenen ' + plan.update.length + ' · silinen ' + plan.remove.length + ' · aynı ' + plan.keep.length);
+}
+
+function surum_() {
+  const res = rpc_('gcal_check');
+  const v = res.getResponseCode() === 200 ? JSON.parse(res.getContentText()) : null;
+  if (v === null) throw new Error('Anahtar geçersiz: uygulamada yeni kod üretildiyse bu kodu güncelle.');
+  return String(v);
+}
+
+function kilitli_(fn) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;                       // başka bir eşitleme sürüyor
+  try { fn(); } finally { lock.releaseLock(); }
+}
+
+// Her iki yön, tam eşitleme
+function senkronize() {
+  kilitli_(() => {
+    const v = surum_();
+    try { ajandayaGonder_(); } catch (e) { console.error('Ajanda gönderimi: ' + e); }
+    takvimiYaz_();
+    const p = PropertiesService.getScriptProperties();
+    p.setProperty('SON_SURUM', v); p.setProperty('SON_TAM', String(Date.now()));
+  });
+}
+
+// Her dakika: uygulamada değişiklik varsa hemen takvime yaz; 15 dakikada bir tam eşitleme
+function kontrol() {
+  const p = PropertiesService.getScriptProperties();
+  if (Date.now() - Number(p.getProperty('SON_TAM') || 0) > 15 * 60 * 1000) { senkronize(); return; }
+  kilitli_(() => {
+    const v = surum_();
+    if (v === p.getProperty('SON_SURUM')) return;
+    takvimiYaz_();
+    p.setProperty('SON_SURUM', v);
+  });
+}
+
+// Google Takvim'inde bir etkinlik eklenince/değişince anında Ajanda'ya gönder
+function takvimDegisti() {
+  kilitli_(() => ajandayaGonder_());
 }
 
 function kur() {
   durdur();
-  ScriptApp.newTrigger('senkronize').timeBased().everyMinutes(15).create();
+  ScriptApp.newTrigger('kontrol').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('takvimDegisti').forUserCalendar(Session.getEffectiveUser().getEmail()).onEventUpdated().create();
   senkronize();
-  console.log('Hazır: takvim 15 dakikada bir güncellenecek.');
+  console.log('Hazır: uygulamadaki değişiklikler 1 dakika içinde takvime, takvimdeki değişiklikler anında uygulamaya gelir.');
 }
 
 function durdur() {
-  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'senkronize').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
 }
 `;
 }

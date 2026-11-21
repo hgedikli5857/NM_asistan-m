@@ -56,6 +56,26 @@ export async function renderAjanda(target, context) {
   el.addEventListener('change', onChange);
   el.addEventListener('submit', onSubmit);
   await load();
+  live();
+}
+
+// Canlı güncelleme: Google Takvim'den gelen ya da başka cihazda eklenen kayıtlar ekrana hemen düşer
+let channel = null, liveTimer = null;
+function live() {
+  if (channel) supabase.removeChannel(channel);
+  const page = el;
+  const refresh = () => {
+    if (!page.isConnected) { supabase.removeChannel(channel); channel = null; return; }
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => { if (page.isConnected && !page.querySelector('#aj-dialog')?.open) load(true); }, 1200);
+  };
+  channel = supabase.channel('ajanda-' + ctx.user.id)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events', filter: `owner_id=eq.${ctx.user.id}` }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, refresh)
+    .subscribe();
+  window.addEventListener('hashchange', function off() {
+    if (!location.hash.startsWith('#/ajanda')) { if (channel) supabase.removeChannel(channel); channel = null; window.removeEventListener('hashchange', off); }
+  });
 }
 
 function range() {
@@ -291,7 +311,7 @@ async function newAppt(day = null, minutes = null) {
       </div>
       <div class="field"><label for="n-loc">Yer ya da bağlantı</label><input id="n-loc" name="location" placeholder="Ör. Zoom linki veya adres"></div>
       <div class="field"><label for="n-notes">Not</label><textarea id="n-notes" name="notes" rows="2"></textarea></div>
-      <p class="small muted">Google Takvim bağlıysa randevu 15 dakika içinde "NM Departmanı" takvimine de düşer.</p>
+      <p class="small muted">Google Takvim bağlıysa randevu 1 dakika içinde "NM Departmanı" takvimine de düşer.</p>
       <p class="error" id="n-error" role="alert"></p>
     </div>
     <footer class="sheet-foot"><button type="button" class="btn btn-ghost" data-act="close">Vazgeç</button>

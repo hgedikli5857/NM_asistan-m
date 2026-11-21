@@ -13,6 +13,6 @@ assert.deepEqual(p.remove, ['ic:eski']);
 assert.deepEqual(planSync({}, [], sign), { create: [], update: [], keep: [], remove: [] });
 
 const code = appsScript('gc_test');
-assert.ok(code.includes("NMD_TOKEN = 'gc_test'") && code.includes('everyMinutes(15)') && code.includes('function durdur()'));
+assert.ok(code.includes("NMD_TOKEN = 'gc_test'") && code.includes('everyMinutes(1)') && code.includes('onEventUpdated') && code.includes('function durdur()'));
 new Function(code);
 console.log('gcal: tamam');

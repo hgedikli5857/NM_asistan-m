@@ -200,7 +200,7 @@ async function gcalBox(box, token = null) {
   if (error) { box.innerHTML = `<p class="small muted">Durum alınamadı: ${esc(trError(error))}</p>`; return; }
   const dt = d => d ? new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'henüz yok';
   const info = `<p class="small muted">Randevular (30 dk önce hatırlatma), günlük takip özeti, görevler ve içerik planı
-      Google hesabında <b>"NM Departmanı"</b> adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz. Değişiklikler 15 dakikada bir yansır.
+      Google hesabında <b>"NM Departmanı"</b> adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz. Uygulamadaki değişiklikler 1 dakika içinde takvime, Google Takvim'indeki değişiklikler anında Ajanda'ya yansır. <b>Kodu daha önce kurduysan yeni kod üretip tekrar yapıştır ve "kur"u çalıştır.</b>
       Takvimde yaptığın düzeltmeler uygulamaya geri gelmez; değişikliği uygulamada yap.</p>`;
   if (token) {
     const code = gcalScript(token);
