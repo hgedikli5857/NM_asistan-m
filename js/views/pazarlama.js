@@ -10,6 +10,7 @@ import { TEMPLATES, SCENE_COUNT, REEL_TOTAL, defaultStoryboard, normalizeStorybo
 import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
   shrinkPhoto, shrinkLogo, imageFromData } from '../pazarlama/karusel.js';
+import { appsScript } from '../pazarlama/gform.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
@@ -48,13 +49,16 @@ export async function renderPazarlama(target, context) {
   s.ai = await aiAvailable();
 
   const from = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-  const [posts, forms, webLeads] = await Promise.all([
+  const [posts, forms, webLeads, gLeads, gStat] = await Promise.all([
     supabase.from('content_posts').select('*').gte('planned_for', from).order('planned_for').limit(500),
     supabase.from('lead_forms').select('*').eq('owner_id', ctx.user.id).order('created_at'),
-    supabase.from('prospects').select('id, full_name, created_at').eq('source', 'Web sitesi').is('deleted_at', null).order('created_at', { ascending: false }).limit(20)
+    supabase.from('prospects').select('id, full_name, created_at').eq('source', 'Web sitesi').is('deleted_at', null).order('created_at', { ascending: false }).limit(20),
+    supabase.from('prospects').select('id, full_name, created_at').contains('tags', ['Google formu']).is('deleted_at', null).order('created_at', { ascending: false }).limit(20),
+    supabase.rpc('gform_status')
   ]);
-  for (const r of [posts, forms, webLeads]) if (r.error) throw r.error;
+  for (const r of [posts, forms, webLeads, gLeads]) if (r.error) throw r.error;
   s.posts = posts.data; s.forms = forms.data; s.webLeads = webLeads.data;
+  s.gLeads = gLeads.data; s.gform = gStat.error ? null : gStat.data; s.gToken = null;
   draw();
 }
 
@@ -190,7 +194,42 @@ function viewIdeas() {
 // ====================================================================
 const formUrl = key => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}form.html?k=${key}`;
 
+function gformCard() {
+  const g = s.gform || {};
+  const dt = d => d ? new Date(d).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  const script = s.gToken ? appsScript(s.gToken) : '';
+  return `<section class="card" style="margin-top:16px">
+    <h2><i class="ti ti-brand-google" aria-hidden="true"></i> Google Form bağlantısı</h2>
+    <p class="muted small">Mevcut Google formunu kullanmaya devam et; her yeni yanıt otomatik olarak Kazanım'a "Google formu" etiketiyle düşer ve bugünün takibine eklenir. Aynı telefon varsa yeni kayıt açılmaz, mevcut adayın notuna eklenir. Gelir hedefi sorusu hiç aktarılmaz.</p>
+    <p class="small">${g.linked ? `<span class="badge">Bağlı</span> Son yanıt: ${esc(dt(g.last_at))} · Toplam: ${g.total}` : '<span class="badge">Bağlı değil</span>'}</p>
+    ${s.gToken ? `<ol class="small">
+        <li>Google formunun <b>yanıt tablosunu</b> aç → <b>Uzantılar → Apps Script</b>.</li>
+        <li>İçindeki her şeyi sil, aşağıdaki kodu yapıştır, <b>Kaydet</b>.</li>
+        <li>Üstteki listeden <b>kur</b> fonksiyonunu seç → <b>Çalıştır</b> → Google izinlerini onayla.</li>
+        <li>Formu kendin bir kez "deneme" adıyla doldur: deneme kayıtları atlanır, Apps Script "Yürütmeler" ekranında 200 görürsen tamamdır.</li></ol>
+      <div class="field"><label for="gf-code">Apps Script kodu (anahtar yalnızca şimdi görünür)</label><textarea id="gf-code" readonly rows="8">${esc(script)}</textarea></div>
+      <button class="btn btn-gold" data-copy="${esc(script)}"><i class="ti ti-copy" aria-hidden="true"></i> Kodu kopyala</button>`
+    : `<button class="btn ${g.linked ? 'btn-ghost' : 'btn-gold'}" data-act="gform-token"><i class="ti ti-key" aria-hidden="true"></i> ${g.linked ? 'Yeni anahtar ve kod üret (eskisi çalışmaz olur)' : 'Bağlantı kodunu oluştur'}</button>`}
+    <h3 style="margin-top:18px">Google formundan gelen son adaylar</h3>
+    <ul class="entry-list">${(s.gLeads || []).map(p => `<li><span>${esc(p.full_name)}</span><span class="small muted">${esc(new Date(p.created_at).toLocaleDateString('tr-TR'))}</span></li>`).join('') || '<li class="muted small">Henüz gelen yok.</li>'}</ul>
+  </section>`;
+}
+
+async function gformToken(b) {
+  if (s.gform?.linked && !confirm('Yeni anahtar üretilince Apps Script\'teki eski kod çalışmaz; yenisini yapıştırman gerekir. Devam?')) return;
+  b.disabled = true;
+  const { data, error } = await supabase.rpc('gform_new_token');
+  b.disabled = false;
+  if (error) { toast(trError(error)); return; }
+  s.gToken = data; s.gform = { ...(s.gform || {}), linked: true, total: s.gform?.total || 0 };
+  draw();
+}
+
 function viewForm() {
+  return viewAppForm() + gformCard();
+}
+
+function viewAppForm() {
   const f = s.forms[0];
   if (!f) return `<div class="card empty"><i class="ti ti-forms" aria-hidden="true"></i><h2>Web sitesi aday formu</h2>
     <p class="muted">hakangedikli.com'a ya da Instagram profiline koyabileceğin bir form oluştur. Dolduran kişi KVKK onayıyla birlikte doğrudan Kazanım listene düşer.</p>
@@ -268,6 +307,7 @@ function onClick(e) {
     case 'copy-cap': navigator.clipboard.writeText(el.querySelector('#c-cap').value).then(() => toast('Caption kopyalandı.')); break;
     case 'del-post': delPost(b, id); break;
     case 'create-form': createForm(b); break;
+    case 'gform-token': gformToken(b); break;
     case 'reel-prev': s.reel.prev = +b.dataset.i; paintPreview(); markPrev(); break;
     case 'reel-ai': reelAi(b); break;
     case 'reel-render': reelRender(b); break;
