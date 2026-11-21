@@ -1,5 +1,6 @@
 // Kazanım birimi: Bugün listesi, Adaylar, Satış hunisi, aday kartı ve içe aktarma
 import { waAttrs } from '../wa.js';
+import { mountKart } from '../kisi/kart.js';
 import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError, todayISO } from '../ui.js';
 import {
@@ -49,6 +50,8 @@ export async function renderKazanim(target, context) {
   el.addEventListener('submit', onSubmit);
 
   await reload();
+  const openId = new URLSearchParams(location.hash.split('?')[1] || '').get('aday');
+  if (openId && state.prospects.some(x => x.id === openId)) detailDialog(openId);
   // WhatsApp bot CRM'den arka planda senkron (30 dakikada bir)
   crmAutoSync().then(async r => {
     if (r && (r.yeni || r.telefonla_eslesen) && el?.isConnected) {
@@ -348,11 +351,12 @@ async function detailDialog(id) {
         <button class="btn btn-primary" type="submit">Kaydet</button>
       </form>
 
+      <div id="k-kart"></div>
+
       ${crmSummaryHTML(p.extra?.crm, p.id)}
 
       <dl class="facts">
-        ${fact('Telefon', p.phone)}${fact('Instagram', p.instagram)}${fact('Kanal', p.channel)}${fact('Kaynak', p.source)}
-        ${fact('Meslek', p.occupation)}${fact('İlgi alanları', p.interests)}
+        ${fact('Telefon', p.phone)}${fact('Kanal', p.channel)}${fact('Kaynak', p.source)}
         ${fact('Sonraki takip', p.next_follow_up_at && relativeDay(p.next_follow_up_at))}
         ${fact('Son temas', p.last_contact_at && relativeDay(p.last_contact_at))}
         ${fact('Notlar', p.notes)}
@@ -365,6 +369,10 @@ async function detailDialog(id) {
         <button class="btn btn-ghost" data-act="delete" data-id="${p.id}"><i class="ti ti-trash" aria-hidden="true"></i> Adayı sil</button>
       </div>
     </div>`);
+
+  mountKart(el.querySelector('#k-kart'), p, {
+    onChange: np => { state.prospects = state.prospects.map(x => (x.id === np.id ? np : x)); draw(); }
+  });
 
   const [{ data: logs }, { data: consents }] = await Promise.all([
     supabase.from('interactions').select('*').eq('prospect_id', p.id).order('occurred_at', { ascending: false }).limit(50),
@@ -441,8 +449,9 @@ function onInput(e) {
 }
 
 async function onSubmit(e) {
-  e.preventDefault();
   const form = e.target;
+  if (!form.dataset.form) return; // kişi kartı formu kendi işini görür
+  e.preventDefault();
   const kind = form.dataset.form;
   const btn = form.querySelector('[type="submit"]');
   btn.disabled = true;

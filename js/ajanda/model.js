@@ -9,7 +9,7 @@ export const KINDS = {
   icerik: { label: 'İçerik', icon: 'ti-photo' }
 };
 
-const APPT_KIND = { sunum: 'Sunum', birebir: 'Birebir', etkinlik: 'Etkinlik', egitim: 'Eğitim', toplanti: 'Toplantı' };
+const APPT_KIND = { sunum: 'Sunum', birebir: 'Birebir', etkinlik: 'Etkinlik', egitim: 'Eğitim', diger: 'Randevu' };
 const FORMAT = { karusel: 'Karusel', reels: 'Reels', gonderi: 'Gönderi', hikaye: 'Hikâye' };
 const POST_ST = { taslak: 'Taslak', hazir: 'Hazır', yayinda: 'Yayında', planli: 'Planlı' };
 const CRM_TUR = { online_sunum: 'Online sunum', tanisma_toplantisi: 'Tanışma toplantısı', egitim: 'Eğitim', diger: 'Etkinlik' };
@@ -22,10 +22,26 @@ export function dayKey(d) {
 const fromDay = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (k, n) => { const d = fromDay(k); d.setDate(d.getDate() + n); return dayKey(d); };
 
-export function buildAgenda(src = {}, { now = new Date(), days = 14 } = {}) {
+// Kişi adlarını başlıkta aramak için dizin (en az iki kelimelik adlar)
+export const normName = t => String(t || '').toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+export function nameIndex(prospects = []) {
+  return prospects.map(p => ({ id: p.id, n: normName(p.full_name) }))
+    .filter(x => x.n.split(' ').length >= 2 && x.n.length >= 5)
+    .sort((a, b) => b.n.length - a.n.length);
+}
+export function matchProspect(title, index) {
+  const t = ` ${normName(title)} `;
+  const hit = index.find(x => t.includes(` ${x.n} `));
+  return hit ? hit.id : null;
+}
+
+export function buildAgenda(src = {}, { now = new Date(), days = 14, from = null } = {}) {
   const today = dayKey(now);
-  const last = addDays(today, days - 1);
-  const inWin = k => k >= today && k <= last;
+  const first = from ? dayKey(from) : today;
+  const last = addDays(first, days - 1);
+  const inWin = k => k >= first && k <= last;
+  const todayIn = inWin(today);
+  const idx = src.nameIndex || [];
   const items = [];
 
   for (const a of src.appts || []) {
@@ -37,7 +53,7 @@ export function buildAgenda(src = {}, { now = new Date(), days = 14 } = {}) {
       end: new Date(s.getTime() + (a.duration_min || 60) * 60000),
       title: `${APPT_KIND[a.kind] || 'Randevu'}: ${a.title || a.prospect_name || ''}`.replace(/: $/, ''),
       sub: [a.prospect_name && a.title ? a.prospect_name : '', a.location, a.is_team_event ? 'Ekip etkinliği' : ''].filter(Boolean).join(' · '),
-      done: a.status === 'yapildi', href: '#/ekip?tab=takvim'
+      done: a.status === 'yapildi', href: '#/ekip?tab=takvim', pid: a.prospect_id || null, ref: a.id, status: a.status
     });
   }
 
@@ -47,12 +63,12 @@ export function buildAgenda(src = {}, { now = new Date(), days = 14 } = {}) {
       // Çok günlük tüm gün etkinlikleri her güne yaz (bitiş günü hariç)
       let k = dayKey(s); const endK = dayKey(new Date(e.getTime() - 1));
       for (let i = 0; i < 40 && k <= endK; i++, k = addDays(k, 1)) {
-        if (inWin(k)) items.push({ kind: 'google', key: `gg:${g.ext_id}:${k}`, day: k, allDay: true, start: fromDay(k), title: g.title, sub: g.location || '', note: g.description || '' });
+        if (inWin(k)) items.push({ kind: 'google', key: `gg:${g.ext_id}:${k}`, day: k, allDay: true, start: fromDay(k), title: g.title, sub: g.location || '', note: g.description || '', pid: matchProspect(g.title, idx) });
       }
       continue;
     }
     const k = dayKey(s); if (!inWin(k)) continue;
-    items.push({ kind: 'google', key: 'gg:' + g.ext_id, day: k, start: s, end: e, title: g.title, sub: g.location || '', note: g.description || '' });
+    items.push({ kind: 'google', key: 'gg:' + g.ext_id, day: k, start: s, end: e, title: g.title, sub: g.location || '', note: g.description || '', pid: matchProspect(g.title, idx) });
   }
 
   for (const c of src.crmEvents || []) {
@@ -72,8 +88,8 @@ export function buildAgenda(src = {}, { now = new Date(), days = 14 } = {}) {
     if (!p.next_follow_up_at) continue;
     const k0 = dayKey(new Date(p.next_follow_up_at));
     const late = k0 < today, k = late ? today : k0;
-    if (!inWin(k)) continue;
-    (fu[k] ||= []).push({ name: p.full_name, late });
+    if (!inWin(k) || (late && !todayIn)) continue;
+    (fu[k] ||= []).push({ id: p.id, name: p.full_name, late });
   }
   for (const [k, list] of Object.entries(fu)) {
     list.sort((a, b) => (b.late - a.late) || a.name.localeCompare(b.name, 'tr'));
@@ -82,15 +98,15 @@ export function buildAgenda(src = {}, { now = new Date(), days = 14 } = {}) {
       kind: 'takip', key: 'tk:' + k, day: k, allDay: true, start: fromDay(k),
       title: `Takip: ${list.length} kişi${lateN ? ` (${lateN} gecikmiş)` : ''}`,
       sub: list.slice(0, 6).map(x => x.name).join(', ') + (list.length > 6 ? ` +${list.length - 6}` : ''),
-      late: lateN > 0, href: '#/iletisim'
+      late: lateN > 0, href: '#/iletisim', people: list
     });
   }
 
   for (const t of src.tasks || []) {
     if (t.done_at || !t.due_date) continue;
     const late = t.due_date < today, k = late ? today : t.due_date;
-    if (!inWin(k)) continue;
-    items.push({ kind: 'gorev', key: 'gt:' + t.id, day: k, allDay: true, start: fromDay(k), title: t.title, sub: t.prospect_name || '', late, href: '#/kazanim' });
+    if (!inWin(k) || (late && !todayIn)) continue;
+    items.push({ kind: 'gorev', key: 'gt:' + t.id, day: k, allDay: true, start: fromDay(k), title: t.title, sub: t.prospect_name || '', late, href: '#/kazanim', pid: t.prospect_id || null });
   }
 
   for (const c of src.posts || []) {
@@ -139,4 +155,59 @@ export function timeLabel(it) {
 // Şu an süren ya da bir sonraki saatli öğe (Panel kartı için)
 export function nextUp(items, now = new Date()) {
   return items.find(x => !x.allDay && (x.end || x.start) >= now) || null;
+}
+
+export { addDays, fromDay };
+
+// Haftanın pazartesisi
+export function weekStart(d) {
+  const x = new Date(d); x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+// Görünüm aralığı: { from: Date, days }
+export function viewRange(mode, anchor) {
+  const a = new Date(anchor); a.setHours(0, 0, 0, 0);
+  if (mode === 'gun') return { from: a, days: 1 };
+  if (mode === 'hafta') return { from: weekStart(a), days: 7 };
+  if (mode === 'ay') {
+    const first = new Date(a.getFullYear(), a.getMonth(), 1);
+    const from = weekStart(first);
+    const lastDay = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+    const end = weekStart(lastDay); end.setDate(end.getDate() + 7);
+    return { from, days: Math.round((end - from) / 864e5) };
+  }
+  return { from: a, days: 7 };
+}
+
+export function shiftAnchor(mode, anchor, dir) {
+  const a = new Date(anchor);
+  if (mode === 'gun') a.setDate(a.getDate() + dir);
+  else if (mode === 'hafta' || mode === 'liste') a.setDate(a.getDate() + 7 * dir);
+  else { a.setDate(1); a.setMonth(a.getMonth() + dir); }
+  return a;
+}
+
+// Saatli öğelerin gün içindeki yerleşimi: üst/yükseklik (dakika, görünür aralığa kırpılmış) ve çakışma sütunları
+export function layoutDay(items, { startHour = 8, endHour = 22 } = {}) {
+  const lo = startHour * 60, hi = endHour * 60;
+  const ev = items.filter(x => !x.allDay).map(x => {
+    const s = x.start.getHours() * 60 + x.start.getMinutes();
+    const e0 = x.end && x.end > x.start ? (dayKey(x.end) === x.day ? x.end.getHours() * 60 + x.end.getMinutes() : 24 * 60) : s + 30;
+    const e = Math.max(e0, s + 15);
+    const top = Math.min(Math.max(s, lo), hi - 15), bottom = Math.max(Math.min(e, hi), top + 15);
+    return { it: x, s, e, top: top - lo, height: bottom - top, before: s < lo, after: s >= hi };
+  }).sort((a, b) => a.top - b.top || b.height - a.height);
+  // Çakışan gruplar → sütunlar
+  let group = [], groupEnd = -1;
+  const flush = () => { const n = Math.max(...group.map(g => g.col)) + 1; group.forEach(g => { g.cols = n; }); group = []; };
+  for (const g of ev) {
+    if (group.length && g.top >= groupEnd) flush();
+    const used = new Set(group.filter(o => o.top + o.height > g.top).map(o => o.col));
+    let c = 0; while (used.has(c)) c++;
+    g.col = c; group.push(g); groupEnd = Math.max(groupEnd, g.top + g.height);
+  }
+  if (group.length) flush();
+  return ev;
 }

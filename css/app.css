@@ -686,3 +686,97 @@ a.aj-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
   .aj-icon.k-gorev { background: #252B38; color: #C9D3EE; }
   .note { background: #3A3020; }
 }
+
+/* ===================== Kişi kartı ===================== */
+.kart { border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 14px 0; background: var(--surface); }
+.kart-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kart-head h3 { margin: 0; margin-right: auto; font-size: 1rem; }
+.kart-bar { height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; margin: 12px 0 4px; }
+.kart-bar span { display: block; height: 100%; background: var(--gold-600); border-radius: 99px; }
+.kart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 12px 0 8px; }
+.kart-grid > div { min-width: 0; }
+.kart-grid .wide { grid-column: 1 / -1; }
+.kart-grid dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; }
+.kart-grid dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.bot-tag { display: inline-block; font-size: .62rem; padding: 1px 6px; border-radius: 99px; background: #E6EEFB; color: #2B5CB8; text-transform: none; letter-spacing: 0; vertical-align: 1px; }
+.kart-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; margin-top: 10px; }
+.kart-form .wide { grid-column: 1 / -1; }
+@media (prefers-color-scheme: dark) { .bot-tag { background: #1D2B45; color: #9DB8EC; } }
+
+/* ===================== Takvim (Gün / Hafta / Ay) ===================== */
+.cal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 10px; }
+.cal-top .seg { margin-bottom: 0; }
+.cal-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cal-title { margin: 0 6px; font-size: 1rem; }
+.cal-hours { display: flex; flex-wrap: wrap; gap: 0 14px; align-items: end; margin-bottom: 10px; }
+.cal-hours .field { min-width: 120px; }
+.cal-hours p { flex-basis: 100%; margin: 0; }
+.cal-kinds { margin-bottom: 14px; }
+.aj-row { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+button.aj-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
+.pre { white-space: pre-wrap; }
+.g-hint { margin: 10px 0 0; }
+
+/* Renkler: tür başına sol çizgi + açık zemin */
+.k-randevu { --k: var(--gold-600); --kb: var(--gold-100); }
+.k-google { --k: #2B5CB8; --kb: #E6EEFB; }
+.k-etkinlik { --k: #7A3EA8; --kb: #F3E8FB; }
+.k-takip { --k: var(--success); --kb: #E1F2EA; }
+.k-gorev { --k: var(--navy-800); --kb: #EEF0F4; }
+.k-icerik { --k: #B7791F; --kb: #FBF1E0; }
+
+/* Ay */
+.cal-month { padding: 10px; }
+.m-head, .m-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.m-head span { text-align: center; font-size: .72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 4px 0 8px; }
+.m-grid { gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.m-cell { background: var(--surface); min-height: 104px; padding: 4px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; min-width: 0; }
+.m-cell.out { background: var(--bg, #F7F5F0); }
+.m-cell.out .m-num { opacity: .45; }
+.m-num { font-size: .8rem; font-weight: 600; align-self: flex-end; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 99px; }
+.m-cell.today .m-num { background: var(--gold-600); color: #fff; }
+.m-ev, .g-chip { display: block; width: 100%; border: 0; border-left: 3px solid var(--k); background: var(--kb); color: inherit; font: inherit; font-size: .72rem; text-align: left;
+  padding: 2px 4px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.m-more { border: 0; background: none; font: inherit; font-size: .72rem; color: var(--text-muted); text-align: left; padding: 0 4px; cursor: pointer; }
+
+/* Gün / Hafta */
+.cal-grid { padding: 10px; }
+.g-row { display: grid; grid-template-columns: 48px repeat(var(--days), minmax(0, 1fr)); }
+.g-head { border-bottom: 1px solid var(--border); }
+.g-dayhead { border: 0; background: none; font: inherit; display: grid; justify-items: center; padding: 4px 0 6px; cursor: pointer; color: inherit; }
+.g-dayhead span { font-size: .7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.g-dayhead b { font-size: 1.05rem; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 99px; }
+.g-dayhead.today b { background: var(--gold-600); color: #fff; }
+.g-allday { border-bottom: 1px solid var(--border); padding: 4px 0; }
+.g-allday .g-axis-sp { font-size: .62rem; align-self: center; }
+.g-allday-cell { display: grid; gap: 2px; padding: 0 2px; min-width: 0; align-content: start; }
+.g-scroll { max-height: 62vh; overflow-y: auto; position: relative; }
+.g-axis span { display: block; font-size: .68rem; color: var(--text-muted); text-align: right; padding-right: 6px; transform: translateY(-6px); font-variant-numeric: tabular-nums; }
+.g-col { position: relative; border-left: 1px solid var(--border); cursor: copy;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 51px, var(--border) 51px, var(--border) 52px); }
+.g-col.today { background-color: rgba(201, 162, 39, .05); }
+.g-ev { position: absolute; border: 0; border-left: 3px solid var(--k); background: var(--kb); color: inherit; font: inherit; font-size: .74rem; line-height: 1.25;
+  text-align: left; padding: 2px 5px; border-radius: 6px; overflow: hidden; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); z-index: 1; }
+.g-ev b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.g-ev i { font-size: .8rem; margin-right: 2px; }
+.cal-grid.week .g-ev span { display: block; }
+.cal-now { position: absolute; left: 0; right: 0; height: 2px; background: #D64545; z-index: 2; pointer-events: none; }
+.cal-now::before { content: ''; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 99px; background: #D64545; }
+
+@media (max-width: 560px) {
+  .cal-top .seg button i { display: none; }
+  .m-cell { min-height: 66px; padding: 2px; }
+  .m-ev { font-size: .6rem; padding: 1px 2px; border-left-width: 2px; }
+  .m-ev b { display: none; }
+  .g-row { grid-template-columns: 34px repeat(var(--days), minmax(0, 1fr)); }
+  .g-axis span { font-size: .6rem; padding-right: 3px; }
+  .cal-grid { padding: 6px; }
+  .cal-grid.week .g-ev { font-size: .6rem; padding: 1px 2px; }
+  .cal-grid.week .g-ev b { display: none; }
+  .cal-grid.week .g-chip { font-size: .58rem; }
+}
+@media (prefers-color-scheme: dark) {
+  .k-randevu { --kb: #3A3020; } .k-google { --kb: #1D2B45; --k: #9DB8EC; } .k-etkinlik { --kb: #2C2038; --k: #CDA5EA; }
+  .k-takip { --kb: #16372A; } .k-gorev { --kb: #252B38; --k: #C9D3EE; } .k-icerik { --kb: #3A2E1A; }
+  .m-cell.out { background: rgba(255,255,255,.02); }
+}

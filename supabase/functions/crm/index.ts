@@ -4,6 +4,8 @@
 //   { action: 'sync' }                      → adayları senkronla
 //   { action: 'messages', prospect_id }     → o adayın WhatsApp mesaj geçmişi
 //   { action: 'events', days }              → Ajanda için aktif etkinlikler
+//   { action: 'card', prospect_id }         → kişi kartı (bot CRM'den canlı)
+//   { action: 'card_save', prospect_id, fields } → kartı bot CRM'e ve uygulamaya yaz
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -15,6 +17,10 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 type Link = { user_id: string; crm_url: string; crm_key: string; token: string };
+const STAGE_TO_ASAMA: Record<string, string> = {
+  liste: 'temas_yok', temas: 'ilk_temas', davet: 'gorusme_planlandi', sunum: 'gorusme_yapildi', takip: 'gorusme_yapildi',
+  musteri: 'musteri', is_ortagi: 'ekip_arkadasi', pasif: 'ilgilenmiyor'
+};
 
 async function crmRpc(link: Link, fn: string, args: Record<string, unknown>) {
   const r = await fetch(`${link.crm_url}/rest/v1/rpc/${fn}`, {
@@ -106,6 +112,39 @@ Deno.serve(async (req: Request) => {
       const days = Math.min(Math.max(Number(body.days) || 60, 1), 120);
       const events = await crmRpc(link as Link, 'nmd_etkinlikler', { p_days: days });
       return json({ events });
+    }
+
+    // Kişi kartı: bot CRM panelinin doldurduğu alanlar, iki yönlü
+    if (body.action === 'card' || body.action === 'card_save') {
+      const pid = String(body.prospect_id || '');
+      const { data: p } = await userClient.from('prospects').select('id, owner_id, extra, stage').eq('id', pid).maybeSingle();
+      if (!p || p.owner_id !== user.id) return json({ error: 'not_found' }, 404);
+      const crmId = p.extra?.crm?.id;
+      if (!crmId || p.extra?.crm?.protected) return json({ linked: false });
+      let card;
+      try {
+        if (body.action === 'card') card = await crmRpc(link as Link, 'nmd_lead_card', { p_lead_id: crmId });
+        else {
+          const f = { ...(body.fields || {}) } as Record<string, unknown>;
+          if (f.stage) { const a = STAGE_TO_ASAMA[String(f.stage)]; if (a) f.asama = a; delete f.stage; }
+          card = await crmRpc(link as Link, 'nmd_lead_update', { p_lead_id: crmId, p_fields: f });
+        }
+      } catch (e) {
+        return json({ error: 'crm', message: String((e as Error).message || e) }, 400);
+      }
+      const kart = { ...card }; delete kart.id; delete kart.phone; delete kart.tags;
+      const upd: Record<string, unknown> = { extra: { ...(p.extra || {}), crm: { ...(p.extra?.crm || {}), kart, tags: card.tags, synced_at: new Date().toISOString() } } };
+      if (body.action === 'card_save') {
+        const f = body.fields || {};
+        if ('meslek' in f) upd.occupation = card.meslek || null;
+        if ('ilgi_alanlari' in f) upd.interests = card.ilgi_alanlari || null;
+        if ('instagram' in f) upd.instagram = card.instagram || null;
+        if ('ad_soyad' in f && card.ad_soyad) upd.full_name = card.ad_soyad;
+        if ('liste_turu' in f && ['sicak', 'ilik', 'soguk'].includes(card.liste_turu)) upd.temperature = card.liste_turu;
+        if (f.stage) upd.stage = f.stage;
+      }
+      await admin.from('prospects').update(upd).eq('id', pid);
+      return json({ linked: true, card });
     }
 
     if (body.action === 'messages') {

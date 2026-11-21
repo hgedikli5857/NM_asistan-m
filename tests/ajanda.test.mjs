@@ -38,3 +38,26 @@ assert.equal(groupByDay([], { now, days: 7 }).length, 1, 'bugün boş olsa da g�
 assert.equal(nextUp(items, now).key, 'ce:c1');
 assert.equal(dayKey(now), '2026-11-21');
 console.log('ajanda: tamam');
+
+// Takvim yardımcıları
+import { viewRange, shiftAnchor, layoutDay, weekStart, matchProspect, nameIndex } from '../js/ajanda/model.js';
+{
+  const a = new Date(2026, 10, 21);
+  const w = viewRange('hafta', a); assert.equal(dayKey(w.from), '2026-11-16'); assert.equal(w.days, 7);
+  const m = viewRange('ay', a); assert.equal(dayKey(m.from), '2026-10-26'); assert.equal(m.days, 42);
+  assert.equal(viewRange('gun', a).days, 1);
+  assert.equal(dayKey(shiftAnchor('ay', new Date(2026, 0, 31), 1)), '2026-02-01');
+  assert.equal(dayKey(weekStart(new Date(2026, 10, 22))), '2026-11-16'); // pazar → önceki pazartesi
+  const mk = (id, h1, m1, h2, m2) => ({ key: id, day: '2026-11-24', start: new Date(2026, 10, 24, h1, m1), end: new Date(2026, 10, 24, h2, m2) });
+  const L = layoutDay([mk('a', 21, 30, 22, 15), mk('b', 21, 30, 22, 30), mk('c', 21, 30, 22, 15), mk('d', 10, 0, 11, 0), mk('e', 6, 0, 7, 0)], { startHour: 8, endHour: 22 });
+  const by = Object.fromEntries(L.map(x => [x.it.key, x]));
+  assert.equal(by.a.cols, 3); assert.equal(new Set([by.a.col, by.b.col, by.c.col]).size, 3, 'çakışanlar yan yana');
+  assert.equal(by.d.cols, 1); assert.equal(by.d.top, 120);
+  assert.ok(by.e.before && by.e.top === 0, 'aralık öncesi kenara kırpılır');
+  assert.equal(by.b.top + by.b.height, 14 * 60, 'bitiş aralığa kırpılır');
+  const idx = nameIndex([{ id: 'p1', full_name: 'Arzu Topaloğlu' }, { id: 'p2', full_name: 'Ali' }, { id: 'p3', full_name: 'Saliha Umul Otaklı' }]);
+  assert.equal(matchProspect('Zoom daveti gönder: Arzu Topaloğlu', idx), 'p1');
+  assert.equal(matchProspect('Zoom daveti gönder : SALİHA UMUL OTAKLI', idx), 'p3');
+  assert.equal(matchProspect('Ali ile kahve', idx), null, 'tek kelimelik adlar eşlenmez');
+  console.log('takvim: tamam');
+}
