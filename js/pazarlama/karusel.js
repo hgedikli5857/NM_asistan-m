@@ -636,15 +636,16 @@ export async function loadDeckFonts() {
 }
 
 // Tüm sayfaları PNG olarak üret → [{ blob, name }]
-export async function renderDeck(deck, photo = null, onProgress = () => {}, logo = null) {
+export async function renderDeck(deck, photo = null, onProgress = () => {}, logo = null, type = 'image/png') {
   await loadDeckFonts();
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
   const out = [];
   for (let i = 0; i < deck.slides.length; i++) {
     drawSlide(c, deck, i, photo, logo);
-    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
-    out.push({ blob, name: deckFileName(deck.topic || deck.slides[0]?.title, i) });
+    const blob = await new Promise(r => cv.toBlob(r, type, 0.92));
+    const name = deckFileName(deck.topic || deck.slides[0]?.title, i);
+    out.push({ blob, name: type === 'image/jpeg' ? name.replace(/\.png$/, '.jpg') : name });
     onProgress((i + 1) / deck.slides.length);
     await new Promise(r => setTimeout(r, 0));
   }

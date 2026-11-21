@@ -89,3 +89,10 @@ Pazarlama → Karusel. Motor: `js/pazarlama/karusel.js`.
 - 6 düzen: kapak, ana fikir, üçlü kutu, satır listesi, adımlar, kapanış (web, WhatsApp kanalı, Instagram). `*kelime*` altın renkte yazılır.
 - 1080 × 1350 PNG'ler cihazda üretilir; "Instagram'da paylaş" tüm sayfaları tek seferde gönderir, ZIP indirme var. Fotoğraf yalnızca cihazda saklanır.
 - Marka filtresi tüm sayfa metnine uygulanır. Takvime `format = 'karusel'`, metinler `content_posts.carousel` sütununa kaydedilir.
+
+## Instagram'a doğrudan yayın (v3.7)
+Karusel Stüdyosu → "Instagram'da yayınla". Sunucu fonksiyonu: `supabase/functions/instagram` (Composio API).
+- Gerekli gizli anahtar: `COMPOSIO_API_KEY` (Supabase → Edge Functions → Secrets). Instagram hesabının bağlı olduğu Composio projesine ait olmalı.
+- Yalnızca `private.ig_links` tablosunda izni olan kullanıcı yayınlar; hesap adı eşleşmesi kontrol edilir.
+- Akış: onay ekranı (görseller, açıklama, marka filtresi, "geri alınamaz" onayı) → JPEG üretimi → `ig-temp` geçici alanına yükleme (kullanıcının kendi klasörü) → Composio ile karusel + yayın → geçici dosyalar silinir → takvimde "Paylaşıldı" ve gönderi bağlantısı.
+- Müzik eklenemez (Instagram arayüz sınırı).

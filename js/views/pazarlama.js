@@ -129,6 +129,7 @@ function postDialog(p = null, preset = {}) {
     </div>
     <footer class="sheet-foot">
       ${p ? '<button type="button" class="btn btn-ghost" data-act="del-post" data-id="' + p.id + '">Sil</button>' : ''}
+      ${p && p.ig_permalink ? `<a class="btn btn-ghost" href="${esc(p.ig_permalink)}" target="_blank" rel="noopener"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram'da gör</a>` : ''}
       ${p && p.carousel ? '<button type="button" class="btn btn-ghost" data-act="kar-open" data-id="' + p.id + '"><i class="ti ti-carousel-horizontal" aria-hidden="true"></i> Karusel stüdyosunda aç</button>' : ''}
       ${p && p.storyboard ? '<button type="button" class="btn btn-ghost" data-act="reel-open" data-id="' + p.id + '"><i class="ti ti-movie" aria-hidden="true"></i> Stüdyoda aç</button>' : ''}
       ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="ai-cap"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile yaz</button>' : ''}
@@ -287,6 +288,8 @@ function onClick(e) {
     case 'kar-cal': kToCalendar(b); break;
     case 'kar-copycap': navigator.clipboard.writeText(suggestCaptionK(s.kar.deck)).then(() => toast('Açıklama metni kopyalandı.'), () => toast('Kopyalanamadı.')); break;
     case 'kar-open': kOpen(id); break;
+    case 'kar-ig': igDialog(); break;
+    case 'ig-publish': igPublish(b); break;
     case 'kar-new': kNew(); break;
     case 'kar-logo-del': s.kar.logo = null; s.kar.logoData = ''; kSaveBrand(); kOutReset(); draw(); break;
     case 'kar-photo-del': s.kar.photo = null; s.kar.photoData = ''; kSaveBrand(); kOutReset(); draw(); break;
@@ -295,6 +298,7 @@ function onClick(e) {
 function onInput(e) {
   if (e.target.id === 'c-cap') updateCheck();
   if (e.target.dataset.reel) onReelInput(e.target);
+  if (e.target.id === 'ig-cap') igUpdate();
   if (e.target.dataset.k || e.target.dataset.kf || e.target.dataset.kb) onKarInput(e.target);
 }
 
@@ -518,6 +522,7 @@ function onReelInput(t) {
 
 async function onChange(e) {
   const t = e.target;
+  if (t.id === 'ig-ok' || t.id === 'ig-cap') { igUpdate(); return; }
   if (t.id === 'k-photo') { kPhoto(t.files && t.files[0]); return; }
   if (t.id === 'k-logo') { kLogo(t.files && t.files[0]); return; }
   if (t.dataset.kb === 'handle') { t.value = normalizeBrand({ handle: t.value }).handle; return; }
@@ -775,7 +780,8 @@ function kOutHtml() {
       ${canShare ? '<button type="button" class="btn btn-gold" data-act="kar-share"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram\'da paylaş</button>' : ''}
       <button type="button" class="btn btn-ghost" data-act="kar-zip"><i class="ti ti-file-zip" aria-hidden="true"></i> Hepsini indir (ZIP)</button>
     </div>
-    <p class="small muted">Tek sayfayı indirmek için küçük resme dokun.</p></div>`;
+    <p class="small muted">Tek sayfayı indirmek için küçük resme dokun.</p>
+    ${igButtonHtml()}</div>`;
 }
 
 function kAfterDraw() { kCheck(); kPaint(); }
@@ -968,4 +974,110 @@ async function kLogo(file) {
     s.kar.logo = await imageFromData(s.kar.logoData);
     kSaveBrand(); kOutReset(); draw();
   } catch (e) { toast(e.message); }
+}
+
+// ====================================================================
+// Instagram'a doğrudan yayın (Composio, sunucu fonksiyonu 'instagram')
+async function igStatus() {
+  const k = s.kar;
+  if (k.ig && k.ig.state !== 'error') return k.ig;
+  k.ig = { state: 'checking' };
+  try {
+    const { data, error } = await supabase.functions.invoke('instagram', { body: { action: 'status' } });
+    if (error) {
+      let j = null; try { j = await error.context?.json?.(); } catch { /* yok */ }
+      k.ig = { state: j?.error || 'error', message: j?.message || error.message };
+    } else k.ig = { state: 'ready', username: data.username };
+  } catch (e) { k.ig = { state: 'error', message: e.message }; }
+  const box = el?.querySelector('#ig-box'); if (box) box.outerHTML = igButtonHtml();
+  return k.ig;
+}
+
+function igButtonHtml() {
+  const ig = s.kar.ig;
+  if (!ig) { igStatus(); return '<div id="ig-box"></div>'; }
+  if (ig.state === 'ready') return `<div id="ig-box"><button type="button" class="btn btn-primary" data-act="kar-ig"><i class="ti ti-send" aria-hidden="true"></i> @${esc(ig.username)} hesabında yayınla</button></div>`;
+  if (ig.state === 'not_allowed' || ig.state === 'checking') return '<div id="ig-box"></div>';
+  if (ig.state === 'no_key') return '<div id="ig-box"><p class="small muted">Doğrudan yayın için sunucuya Composio anahtarı (COMPOSIO_API_KEY) eklenmeli.</p></div>';
+  return `<div id="ig-box"><p class="small error">Instagram bağlantısı: ${esc(ig.message || 'kontrol edilemedi')}</p></div>`;
+}
+
+function igDialog() {
+  const k = s.kar;
+  if (!k.out.length) return;
+  if (k.out.length < 2) { toast('Karusel en az 2 sayfa olmalı.'); return; }
+  const dlg = el.querySelector('#p-dialog');
+  dlg.innerHTML = `<form method="dialog" class="sheet-body ig-dlg" onsubmit="return false">
+    <h2 id="p-dialog-title"><i class="ti ti-brand-instagram" aria-hidden="true"></i> @${esc(k.ig.username)} hesabında yayınla</h2>
+    <div class="kar-thumbs">${k.out.map((o, i) => `<img src="${o.url}" alt="${i + 1}. sayfa">`).join('')}</div>
+    <p class="small muted">${k.out.length} sayfa, gördüğün sırayla yayınlanır.</p>
+    <div class="field"><label for="ig-cap">Açıklama metni</label><textarea id="ig-cap" rows="8" maxlength="2200">${esc(suggestCaptionK(k.deck))}</textarea>
+      <p class="small muted"><span id="ig-len"></span> / 2200</p></div>
+    <div id="ig-check"></div>
+    <label class="check"><input type="checkbox" id="ig-ok"> <span>Bu gönderi herkese açık yayınlanacak ve <strong>buradan geri alınamaz</strong>. Görselleri ve metni kontrol ettim.</span></label>
+    <p class="small muted">Müzik eklenemez; müzik istiyorsan telefondan paylaş.</p>
+    <p class="error" id="ig-error" role="alert"></p>
+    <div class="quick"><button type="button" class="btn btn-ghost" data-act="close">Vazgeç</button>
+      <button type="button" class="btn btn-gold" data-act="ig-publish" id="ig-go" disabled><i class="ti ti-send" aria-hidden="true"></i> Yayınla</button></div>
+  </form>`;
+  dlg.showModal();
+  igUpdate();
+}
+
+function igFindings() {
+  const cap = el.querySelector('#ig-cap')?.value || '';
+  return [...deckFindings(s.kar.deck), ...checkMessage(cap)].filter(x => x.level === 'yuksek');
+}
+function igUpdate() {
+  const cap = el.querySelector('#ig-cap'); if (!cap) return;
+  el.querySelector('#ig-len').textContent = cap.value.length;
+  const f = igFindings();
+  el.querySelector('#ig-check').innerHTML = f.length
+    ? `<div class="check-box warn">${f.map(x => `<p><strong>${esc(x.cat)}:</strong> "${x.hits.map(esc).join('", "')}" — ${esc(x.tip)}</p>`).join('')}<p><strong>Marka filtresi uyarısı varken yayınlanamaz.</strong></p></div>`
+    : '<div class="check-box ok"><i class="ti ti-shield-check" aria-hidden="true"></i> Marka ve uyum kontrolü: sorun yok</div>';
+  el.querySelector('#ig-go').disabled = !!f.length || !el.querySelector('#ig-ok').checked;
+}
+
+async function igPublish(btn) {
+  const k = s.kar, err = el.querySelector('#ig-error');
+  const caption = el.querySelector('#ig-cap').value.trim();
+  if (igFindings().length || !el.querySelector('#ig-ok').checked) return;
+  btn.disabled = true; err.textContent = '';
+  const step = t => { btn.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> ${t}`; };
+  const uploaded = [];
+  try {
+    // Takvim kaydı yoksa önce kaydet (yayın bağlantısı oraya yazılır)
+    if (!k.postId) {
+      step('Takvime kaydediliyor…');
+      const topic = (k.deck.topic.trim() || String(k.deck.slides[0]?.title || 'Karusel').replace(/\*/g, '')).slice(0, 200);
+      const { data, error } = await supabase.from('content_posts').insert({ org_id: ctx.org.id, planned_for: todayISO(), platform: 'Instagram',
+        pillar: 'ogretici', status: 'hazir', format: 'karusel', topic, caption: caption.slice(0, 2200), carousel: { ...k.deck, topic } }).select().single();
+      if (error) throw new Error(trError(error));
+      k.postId = data.id; s.posts = [...s.posts, data];
+    }
+    step('Görseller hazırlanıyor…');
+    const jpgs = await renderDeck(k.deck, k.photo, () => {}, k.logo, 'image/jpeg');
+    step('Yükleniyor…');
+    const stamp = Date.now();
+    for (let i = 0; i < jpgs.length; i++) {
+      const path = `${ctx.user.id}/${stamp}-${String(i + 1).padStart(2, '0')}.jpg`;
+      const { error } = await supabase.storage.from('ig-temp').upload(path, jpgs[i].blob, { contentType: 'image/jpeg', upsert: false });
+      if (error) throw new Error('Görsel yüklenemedi: ' + error.message);
+      uploaded.push(path);
+    }
+    step('Instagram\'da yayınlanıyor…');
+    const { data, error } = await supabase.functions.invoke('instagram', { body: { action: 'publish', paths: uploaded, caption, post_id: k.postId } });
+    if (error) { let j = null; try { j = await error.context?.json?.(); } catch { /* yok */ } throw new Error(j?.message || error.message); }
+    uploaded.length = 0; // sunucu sildi
+    s.posts = s.posts.map(p => (p.id === k.postId ? { ...p, status: 'paylasildi', ig_permalink: data.permalink, published_at: new Date().toISOString() } : p));
+    el.querySelector('#p-dialog').innerHTML = `<div class="sheet-body"><h2><i class="ti ti-circle-check" aria-hidden="true"></i> Yayınlandı</h2>
+      <p>Karusel @${esc(k.ig.username)} hesabında yayında ve takvimde "Paylaşıldı" olarak işaretlendi.</p>
+      ${data.permalink ? `<p><a class="btn btn-gold" href="${esc(data.permalink)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Gönderiyi aç</a></p>` : ''}
+      <div class="quick"><button type="button" class="btn btn-ghost" data-act="close">Kapat</button></div></div>`;
+    toast('Karusel Instagram\'da yayınlandı.');
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-send" aria-hidden="true"></i> Tekrar dene';
+    if (uploaded.length) supabase.storage.from('ig-temp').remove(uploaded).catch(() => {});
+  }
 }
