@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { waUrl, waAttrs } from '../js/wa.js';
+const AND = 'Mozilla/5.0 (Linux; Android 14; SM-X200) Chrome/130', IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)';
+assert.equal(waUrl('905551112233', 'Merhaba', { app: 'auto', ua: AND }), 'https://wa.me/905551112233?text=Merhaba');
+const b = waUrl('905551112233', 'Selam ç', { app: 'w4b', ua: AND });
+assert.ok(b.startsWith('intent://send/?phone=905551112233&text=Selam%20%C3%A7#Intent;scheme=whatsapp;package=com.whatsapp.w4b;'));
+assert.ok(waUrl('90555', '', { app: 'wa', ua: AND }).includes('package=com.whatsapp;'));
+assert.equal(waUrl('90555', '', { app: 'w4b', ua: IOS }), 'https://wa.me/90555');
+assert.ok(waUrl('', 'Davet', { app: 'w4b', ua: AND }).startsWith('intent://send/?text=Davet#'));
+assert.ok(waAttrs('90555').includes('target="_blank"'));
+console.log('wa: tamam');

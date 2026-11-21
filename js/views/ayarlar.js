@@ -4,6 +4,7 @@ import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
 import { crmStatus, crmSync, resultText } from '../crm/client.js';
 import { appsScript as gcalScript } from '../takvim/gcal.js';
+import { WA_APPS, getWaApp, setWaApp } from '../wa.js';
 import { AI_KEY, getApiKey, serverReady, hasShareConsent, setShareConsent } from '../ai/client.js';
 
 export function renderSettings(el, ctx, { recovery = false } = {}) {
@@ -49,6 +50,14 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
           ${getApiKey() ? '<button class="btn btn-ghost" type="button" id="ai-remove">Anahtarı sil</button>' : ''}
         </div></details>
       </form>
+
+      <section class="card">
+        <h2><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp uygulaması</h2>
+        <div class="field"><label for="wa-app">Mesaj gönderirken açılacak uygulama</label>
+          <select id="wa-app">${Object.entries(WA_APPS).map(([k, v]) => `<option value="${k}" ${getWaApp() === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
+        <p class="small muted">Telefonunda hem WhatsApp hem WhatsApp Business varsa, NM işini hangi numaradan yürütüyorsan onu seç.
+          Android'de geçerlidir; iPhone'da telefonun varsayılanı açılır.</p>
+      </section>
 
       <section class="card" id="crm-card">
         <h2><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp bot CRM</h2>
@@ -130,6 +139,10 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
   aiStatus(el.querySelector('#ai-status'));
   crmBox(el.querySelector('#crm-status'));
   gcalBox(el.querySelector('#gcal-status'));
+  el.querySelector('#wa-app').addEventListener('change', e => {
+    setWaApp(e.target.value);
+    toast(`WhatsApp bağlantıları artık: ${WA_APPS[e.target.value].label}`);
+  });
   const si = el.querySelector('#screen-info');
   const showScreen = () => {
     if (!si?.isConnected) { window.removeEventListener('resize', showScreen); return; }

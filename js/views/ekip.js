@@ -1,4 +1,5 @@
 // Ekip birimi: ekibim, soy ağacı, takvim (randevu + ekip etkinlikleri), sıralama, davet
+import { waAttrs } from '../wa.js';
 import { supabase, isLead, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { relativeDay } from '../kazanim/model.js';
@@ -257,7 +258,7 @@ function viewInvites() {
           ${valid(i) ? 'son gün ' + esc(new Date(i.expires_at).toLocaleDateString('tr-TR')) : i.revoked ? 'iptal' : 'geçersiz'}</span></span>
         ${valid(i) ? `<span class="quick">
           <button class="icon-btn sm" data-copy="${i.code}" aria-label="Linki kopyala"><i class="ti ti-copy" aria-hidden="true"></i></button>
-          <a class="icon-btn sm" href="https://wa.me/?text=${encodeURIComponent('Seni NM Departmanı\'ndaki ekibime davet ediyorum. Bu linkten katılabilirsin: ' + inviteUrl(i.code))}" target="_blank" rel="noopener" aria-label="WhatsApp ile gönder"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>
+          <a class="icon-btn sm" ${waAttrs('', 'Seni NM Departmanı\'ndaki ekibime davet ediyorum. Bu linkten katılabilirsin: ' + inviteUrl(i.code))} aria-label="WhatsApp ile gönder"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>
           <button class="icon-btn sm" data-act="revoke" data-id="${i.id}" aria-label="İptal et"><i class="ti ti-ban" aria-hidden="true"></i></button></span>` : ''}
       </li>`).join('') || '<li class="muted small">Henüz davet yok.</li>'}</ul>
     </section></div>`;

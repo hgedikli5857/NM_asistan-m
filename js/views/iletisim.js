@@ -1,4 +1,5 @@
 // İletişim birimi: mesaj oluştur, şablon kütüphanesi, itiraz rehberi
+import { openWa } from '../wa.js';
 import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
@@ -426,7 +427,7 @@ async function copyText() {
 function openWhatsApp() {
   const text = textOrWarn(); if (!text) return;
   const num = waNumber(currentProspect()?.phone);
-  window.open(`https://wa.me/${num || ''}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  openWa(num, text);
 }
 
 async function logSent(btn) {
@@ -841,7 +842,7 @@ async function approve(mode) {
     } catch (err) { toast(`Gönderilemedi: ${err.message}`); return; }
   } else if (mode === 'wa') {
     const n = waNumber(p?.phone); if (!n) return;
-    window.open(`https://wa.me/${n}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    openWa(n, text);
   } else {
     try { await navigator.clipboard.writeText(text); } catch { /* bazı tarayıcılar izin vermez */ }
     toast('Kopyalandı. Gönderdikten sonra durumu işaretle.');

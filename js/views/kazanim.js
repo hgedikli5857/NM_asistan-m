@@ -1,4 +1,5 @@
 // Kazanım birimi: Bugün listesi, Adaylar, Satış hunisi, aday kartı ve içe aktarma
+import { waAttrs } from '../wa.js';
 import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError, todayISO } from '../ui.js';
 import {
@@ -202,7 +203,7 @@ function row(p, note = '') {
       </span>
     </button>
     <span class="p-actions">
-      ${wa ? `<a class="icon-btn" href="https://wa.me/${wa}" target="_blank" rel="noopener" aria-label="${esc(p.full_name)} WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>` : ''}
+      ${wa ? `<a class="icon-btn" ${waAttrs(wa)} aria-label="${esc(p.full_name)} WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>` : ''}
       ${p.phone ? `<a class="icon-btn" href="tel:${esc(p.phone.replace(/\s/g, ''))}" aria-label="${esc(p.full_name)} ara"><i class="ti ti-phone" aria-hidden="true"></i></a>` : ''}
       <button class="icon-btn" data-act="log" data-id="${p.id}" aria-label="${esc(p.full_name)} temas kaydet"><i class="ti ti-message-plus" aria-hidden="true"></i></button>
     </span>
@@ -320,7 +321,7 @@ async function detailDialog(id) {
     </header>
     <div class="sheet-body">
       <div class="quick">
-        ${wa ? `<a class="btn btn-ghost" href="https://wa.me/${wa}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp</a>` : ''}
+        ${wa ? `<a class="btn btn-ghost" ${waAttrs(wa)}><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp</a>` : ''}
         ${p.phone ? `<a class="btn btn-ghost" href="tel:${esc(p.phone.replace(/\s/g, ''))}"><i class="ti ti-phone" aria-hidden="true"></i> Ara</a>` : ''}
         ${p.instagram ? `<a class="btn btn-ghost" href="https://instagram.com/${esc(p.instagram.replace(/^@/, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram</a>` : ''}
         <a class="btn btn-ghost" href="#/iletisim?aday=${p.id}"><i class="ti ti-message-2" aria-hidden="true"></i> Mesaj yaz</a>
