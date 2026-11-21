@@ -3,6 +3,7 @@ import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { APP_VERSION } from '../config.js';
 import { crmStatus, crmSync, resultText } from '../crm/client.js';
+import { appsScript as gcalScript } from '../takvim/gcal.js';
 import { AI_KEY, getApiKey, serverReady, hasShareConsent, setShareConsent } from '../ai/client.js';
 
 export function renderSettings(el, ctx, { recovery = false } = {}) {
@@ -52,6 +53,11 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
       <section class="card" id="crm-card">
         <h2><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp bot CRM</h2>
         <div id="crm-status"><span class="muted small">Durum kontrol ediliyor…</span></div>
+      </section>
+
+      <section class="card" id="gcal-card">
+        <h2><i class="ti ti-calendar-event" aria-hidden="true"></i> Google Takvim</h2>
+        <div id="gcal-status"><span class="muted small">Durum kontrol ediliyor…</span></div>
       </section>
 
       <section class="card">
@@ -123,6 +129,7 @@ export function renderSettings(el, ctx, { recovery = false } = {}) {
   });
   aiStatus(el.querySelector('#ai-status'));
   crmBox(el.querySelector('#crm-status'));
+  gcalBox(el.querySelector('#gcal-status'));
   const si = el.querySelector('#screen-info');
   const showScreen = () => {
     if (!si?.isConnected) { window.removeEventListener('resize', showScreen); return; }
@@ -173,6 +180,41 @@ async function aiStatus(box) {
       : `<p><span class="badge warn">AI kurulmadı</span></p>
          <p class="small muted">Supabase panelinde nm-departmani → Edge Functions → Secrets bölümüne <code>ANTHROPIC_API_KEY</code> adıyla Claude API anahtarını ekle.
          Ya da aşağıdan yalnızca bu cihaz için kişisel anahtar gir.</p>`;
+}
+
+async function gcalBox(box, token = null) {
+  const { data: st, error } = await supabase.rpc('gcal_status');
+  if (error) { box.innerHTML = `<p class="small muted">Durum alınamadı: ${esc(trError(error))}</p>`; return; }
+  const dt = d => d ? new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'henüz yok';
+  const info = `<p class="small muted">Randevular (30 dk önce hatırlatma), günlük takip özeti, görevler ve içerik planı
+      Google hesabında <b>"NM Departmanı"</b> adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz. Değişiklikler 15 dakikada bir yansır.
+      Takvimde yaptığın düzeltmeler uygulamaya geri gelmez; değişikliği uygulamada yap.</p>`;
+  if (token) {
+    const code = gcalScript(token);
+    box.innerHTML = `${info}
+      <ol class="small">
+        <li><a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a>'da yeni proje aç (takvimin bağlı olduğu Google hesabıyla).</li>
+        <li>İçindeki her şeyi sil, aşağıdaki kodu yapıştır, <b>Kaydet</b>.</li>
+        <li>Üstteki listeden <b>kur</b> fonksiyonunu seç → <b>Çalıştır</b> → Google izinlerini onayla.</li>
+        <li>Google Takvim'de solda "NM Departmanı" takvimi belirir. Durdurmak için <b>durdur</b> fonksiyonunu çalıştır.</li></ol>
+      <div class="field"><label for="gcal-code">Apps Script kodu (anahtar yalnızca şimdi görünür)</label><textarea id="gcal-code" readonly rows="8">${esc(code)}</textarea></div>
+      <button class="btn btn-gold" type="button" id="gcal-copy"><i class="ti ti-copy" aria-hidden="true"></i> Kodu kopyala</button>`;
+    box.querySelector('#gcal-copy').addEventListener('click', () =>
+      navigator.clipboard.writeText(code).then(() => toast('Kod kopyalandı.'), () => toast('Kopyalanamadı; metni elle seç.')));
+    return;
+  }
+  box.innerHTML = `<p>${st?.linked
+      ? `<span class="badge ok">Bağlı</span> Son eşitleme: ${esc(dt(st.last_at))}${st.last_at ? ` · ${st.last_count} öğe` : ' (kurulum bekleniyor)'}`
+      : '<span class="badge">Bağlı değil</span>'}</p>${info}
+    <button class="btn ${st?.linked ? 'btn-ghost' : 'btn-gold'}" type="button" id="gcal-new"><i class="ti ti-key" aria-hidden="true"></i>
+      ${st?.linked ? 'Yeni anahtar ve kod üret (eskisi çalışmaz olur)' : 'Bağlantı kodunu oluştur'}</button>`;
+  box.querySelector('#gcal-new').addEventListener('click', async e => {
+    if (st?.linked && !confirm('Yeni anahtar üretilince Apps Script\'teki eski kod çalışmaz; yenisini yapıştırman gerekir. Devam?')) return;
+    e.currentTarget.disabled = true;
+    const { data, error: err } = await supabase.rpc('gcal_new_token');
+    if (err) { toast(trError(err)); e.currentTarget.disabled = false; return; }
+    gcalBox(box, data);
+  });
 }
 
 async function crmBox(box) {
