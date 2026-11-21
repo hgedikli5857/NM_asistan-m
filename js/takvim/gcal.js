@@ -20,7 +20,8 @@ export function planSync(existing, items, sign) {
 export function appsScript(token) {
   return `// NM Departmanı → Google Takvim köprüsü
 // Kurulum: script.google.com → Yeni proje → bu kodu yapıştır → Kaydet → "kur" fonksiyonunu seç → Çalıştır → izin ver.
-// Etkinlikler "NM Departmanı" adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz. 15 dakikada bir güncellenir.
+// Uygulamadakiler "NM Departmanı" adlı ayrı bir takvime yazılır; kendi takvimine dokunulmaz.
+// Kendi takvimindeki etkinlikler (yalnızca okunur) uygulamanın Ajanda'sında görünür. 15 dakikada bir güncellenir.
 const NMD_URL = '${SUPABASE_URL}/rest/v1/rpc/gcal_feed';
 const NMD_KEY = '${SUPABASE_KEY}';
 const NMD_TOKEN = '${token}';
@@ -56,7 +57,27 @@ function olustur_(cal, it) {
   ev.setTag('nmd_h', imza_(it));
 }
 
+// Kendi (birincil) Google takviminden etkinlikleri uygulamanın Ajanda'sına gönderir
+function ajandayaGonder_() {
+  const from = new Date(); from.setDate(from.getDate() - 7); from.setHours(0, 0, 0, 0);
+  const to = new Date(from.getTime()); to.setDate(to.getDate() + 67);
+  const evs = CalendarApp.getDefaultCalendar().getEvents(from, to)
+    .filter(ev => !ev.getTag('nmd_id')).slice(0, 500)
+    .map(ev => ({
+      id: ev.getId() + '@' + ev.getStartTime().getTime(),
+      title: ev.getTitle(), start: ev.getStartTime().toISOString(), end: ev.getEndTime().toISOString(),
+      allDay: ev.isAllDayEvent(), location: ev.getLocation() || '', description: (ev.getDescription() || '').slice(0, 2000)
+    }));
+  const res = UrlFetchApp.fetch(NMD_URL.replace('gcal_feed', 'gcal_push'), {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { apikey: NMD_KEY, Authorization: 'Bearer ' + NMD_KEY },
+    payload: JSON.stringify({ p_token: NMD_TOKEN, p_from: from.toISOString(), p_to: to.toISOString(), p_events: evs })
+  });
+  console.log("Ajanda'ya gönderilen Google etkinliği: " + evs.length + ' (' + res.getResponseCode() + ')');
+}
+
 function senkronize() {
+  try { ajandayaGonder_(); } catch (e) { console.error('Ajanda gönderimi: ' + e); }
   const res = UrlFetchApp.fetch(NMD_URL, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { apikey: NMD_KEY, Authorization: 'Bearer ' + NMD_KEY },

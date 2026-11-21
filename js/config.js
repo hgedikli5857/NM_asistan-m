@@ -5,4 +5,4 @@ export const SUPABASE_URL = 'https://dpiuyhwjvagezsuhgqxp.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_df7D0hq4YaF3B-Ph9-KgRg_mBAsqpIx';
 
 export const APP_NAME = 'NM Departmanı';
-export const APP_VERSION = '3.9.1 — WhatsApp uygulama seçimi';
+export const APP_VERSION = '3.10.0 — Ajanda';

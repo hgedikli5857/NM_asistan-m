@@ -12,6 +12,7 @@ import { renderOlcum } from './views/olcum.js';
 import { renderEkip } from './views/ekip.js';
 import { renderAkademi } from './views/akademi.js';
 import { renderPazarlama } from './views/pazarlama.js';
+import { renderAjanda } from './views/ajanda.js';
 import { renderKoc } from './views/koc.js';
 import { renderDavet, inviteCodeFromHash, PENDING_INVITE } from './views/davet.js';
 
@@ -33,17 +34,19 @@ const ROUTES = {
   ekip: (p) => renderEkip(p, ctx),
   akademi: (p) => renderAkademi(p, ctx),
   pazarlama: (p) => renderPazarlama(p, ctx),
-  koc: (p) => renderKoc(p, ctx)
+  koc: (p) => renderKoc(p, ctx),
+  ajanda: (p) => renderAjanda(p, ctx)
 };
 
 // ---------- Kabuk (menü + içerik alanı) ----------
 const NAV = [
   { id: '', title: 'Panel', icon: 'ti-layout-dashboard' },
+  { id: 'ajanda', title: 'Ajanda', icon: 'ti-calendar-time' },
   { id: 'koc', title: 'Koç', icon: 'ti-sparkles' },
   ...UNITS.map(u => ({ id: u.id, title: u.title, short: u.short, icon: u.icon })),
   { id: 'ayarlar', title: 'Ayarlar', icon: 'ti-settings' }
 ];
-const MOBILE_NAV = ['', 'kazanim', 'iletisim', 'koc'];
+const MOBILE_NAV = ['', 'ajanda', 'kazanim', 'iletisim', 'koc'];
 
 function orgSwitcher(id) {
   if (ctx.memberships.length < 2) return `<span>${esc(ctx.org?.name || '')}</span>`;

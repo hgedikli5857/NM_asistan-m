@@ -3,6 +3,7 @@
 // Token private.crm_links tablosunda durur; tarayıcıya hiç gitmez.
 //   { action: 'sync' }                      → adayları senkronla
 //   { action: 'messages', prospect_id }     → o adayın WhatsApp mesaj geçmişi
+//   { action: 'events', days }              → Ajanda için aktif etkinlikler
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -98,6 +99,13 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         return json({ error: 'outbox', message: String((e as Error).message || e).replace(/^giden_kutusu:\s*/, '') }, 400);
       }
+    }
+
+    // Ajanda: bot CRM'deki aktif etkinlikler (salt-okunur, hafif)
+    if (body.action === 'events') {
+      const days = Math.min(Math.max(Number(body.days) || 60, 1), 120);
+      const events = await crmRpc(link as Link, 'nmd_etkinlikler', { p_days: days });
+      return json({ events });
     }
 
     if (body.action === 'messages') {

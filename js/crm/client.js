@@ -163,3 +163,9 @@ export function recentWriters(prospects, limit = 6) {
     .sort((a, b) => new Date(b.extra.crm.conv.last_message_at) - new Date(a.extra.crm.conv.last_message_at))
     .slice(0, limit);
 }
+
+// Ajanda: bot CRM'deki aktif etkinlikler
+export async function crmEvents(days = 60) {
+  const data = await call({ action: 'events', days });
+  return data.events || [];
+}

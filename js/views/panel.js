@@ -2,6 +2,9 @@
 import { supabase } from '../supabase.js';
 import { UNITS } from '../units.js';
 import { esc, greeting, todayLong, todayISO } from '../ui.js';
+import { loadAgenda } from '../ajanda/load.js';
+import { nextUp, timeLabel } from '../ajanda/model.js';
+import { itemRow } from './ajanda.js';
 
 const MOTTOS = [
   'Küçük ama istikrarlı adımlar.',
@@ -35,7 +38,7 @@ export async function renderPanel(el, ctx) {
     </section>
 
     <div id="guide"></div>
-    <section class="card" id="upcoming" style="margin-top:16px"><h2><i class="ti ti-calendar-event" aria-hidden="true"></i> Yaklaşan randevular</h2>
+    <section class="card" id="upcoming" style="margin-top:16px"><h2><i class="ti ti-calendar-time" aria-hidden="true"></i> Bugünün ajandası</h2>
       <p class="muted small">Yükleniyor…</p></section>
 
     <div class="section-title"><h2>Departman birimleri</h2><span class="small muted">6 birim aktif</span></div>
@@ -87,16 +90,23 @@ async function loadGuide(box, ctx) {
 }
 
 async function loadUpcoming(box, ctx) {
-  const { data, error } = await supabase.from('appointments').select('id, title, kind, starts_at, is_team_event, org_id, owner_id')
-    .gte('starts_at', new Date(Date.now() - 2 * 3600e3).toISOString()).eq('status', 'planli').order('starts_at').limit(20);
-  if (error) { box.querySelector('p').textContent = 'Randevular yüklenemedi.'; return; }
-  const list = data.filter(a => a.owner_id === ctx.user.id || a.org_id === ctx.org.id).slice(0, 4);
-  box.innerHTML = `<h2><i class="ti ti-calendar-event" aria-hidden="true"></i> Yaklaşan randevular</h2>
-    ${list.length ? `<ul class="entry-list">${list.map(a => `<li><span><strong>${esc(a.title)}</strong>
-      ${a.is_team_event ? '<span class="badge gold">Ekip</span>' : ''}</span>
-      <span class="small muted">${esc(new Date(a.starts_at).toLocaleString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span></li>`).join('')}</ul>`
-      : '<p class="muted small">Planlı randevu yok. <a href="#/ekip?tab=takvim">Bir sunum planla</a>.</p>'}`;
+  try {
+    const { items } = await loadAgenda(ctx, { days: 7 });
+    const now = new Date();
+    const today = items.filter(x => x.day === dayStr(now));
+    const next = today.length ? null : nextUp(items, now);
+    box.innerHTML = `<div class="card-head"><h2><i class="ti ti-calendar-time" aria-hidden="true"></i> Bugünün ajandası</h2>
+        <a class="btn btn-ghost sm" href="#/ajanda">Ajandayı aç <i class="ti ti-arrow-right" aria-hidden="true"></i></a></div>
+      ${today.length ? `<ul class="ajanda-list">${today.slice(0, 8).map(itemRow).join('')}</ul>
+          ${today.length > 8 ? `<p class="small muted">+${today.length - 8} kayıt daha — <a href="#/ajanda">tümü</a></p>` : ''}`
+        : `<p class="muted small">Bugün için planlı bir şey yok.${next ? '' : ' <a href="#/ekip?tab=takvim">Bir sunum planla</a>.'}</p>
+           ${next ? `<p class="small"><strong>Sıradaki:</strong> ${esc(next.title)} · ${esc(new Date(next.start).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'short' }))} ${esc(timeLabel(next))}</p>` : ''}`}`;
+  } catch {
+    box.innerHTML = '<h2>Bugünün ajandası</h2><p class="muted small">Ajanda yüklenemedi. <a href="#/ajanda">Ajandayı aç</a></p>';
+  }
 }
+
+const dayStr = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function statCard(label, value, hint) {
   return `<div class="card stat"><div class="label">${esc(label)}</div>
