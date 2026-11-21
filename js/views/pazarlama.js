@@ -289,6 +289,7 @@ function onClick(e) {
     case 'kar-copycap': navigator.clipboard.writeText(suggestCaptionK(s.kar.deck)).then(() => toast('Açıklama metni kopyalandı.'), () => toast('Kopyalanamadı.')); break;
     case 'kar-open': kOpen(id); break;
     case 'kar-ig': igDialog(); break;
+    case 'ig-retry': s.kar.ig = null; { const bx = el.querySelector('#ig-box'); if (bx) bx.innerHTML = '<p class="small muted">Kontrol ediliyor…</p>'; } igStatus(); break;
     case 'ig-publish': igPublish(b); break;
     case 'kar-new': kNew(); break;
     case 'kar-logo-del': s.kar.logo = null; s.kar.logoData = ''; kSaveBrand(); kOutReset(); draw(); break;
@@ -980,7 +981,7 @@ async function kLogo(file) {
 // Instagram'a doğrudan yayın (Composio, sunucu fonksiyonu 'instagram')
 async function igStatus() {
   const k = s.kar;
-  if (k.ig && k.ig.state !== 'error') return k.ig;
+  if (k.ig && (k.ig.state === 'ready' || k.ig.state === 'checking')) return k.ig;
   k.ig = { state: 'checking' };
   try {
     const { data, error } = await supabase.functions.invoke('instagram', { body: { action: 'status' } });
@@ -995,11 +996,15 @@ async function igStatus() {
 
 function igButtonHtml() {
   const ig = s.kar.ig;
-  if (!ig) { igStatus(); return '<div id="ig-box"></div>'; }
+  if (!ig || (ig.state !== 'ready' && ig.state !== 'checking' && ig.state !== 'not_allowed' && !ig.shown)) {
+    if (ig) ig.shown = true; else igStatus();
+    if (!ig) return '<div id="ig-box"></div>';
+  }
   if (ig.state === 'ready') return `<div id="ig-box"><button type="button" class="btn btn-primary" data-act="kar-ig"><i class="ti ti-send" aria-hidden="true"></i> @${esc(ig.username)} hesabında yayınla</button></div>`;
   if (ig.state === 'not_allowed' || ig.state === 'checking') return '<div id="ig-box"></div>';
   if (ig.state === 'no_key') return '<div id="ig-box"><p class="small muted">Doğrudan yayın için sunucuya Composio anahtarı (COMPOSIO_API_KEY) eklenmeli.</p></div>';
-  return `<div id="ig-box"><p class="small error">Instagram bağlantısı: ${esc(ig.message || 'kontrol edilemedi')}</p></div>`;
+  return `<div id="ig-box"><p class="small error">Instagram bağlantısı: ${esc(ig.message || 'kontrol edilemedi')}</p>
+    <button type="button" class="btn btn-ghost sm" data-act="ig-retry"><i class="ti ti-refresh" aria-hidden="true"></i> Bağlantıyı tekrar dene</button></div>`;
 }
 
 function igDialog() {

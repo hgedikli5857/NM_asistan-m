@@ -41,19 +41,22 @@ async function exec(key: string, acc: Acc, slug: string, args: Record<string, un
 }
 
 // Bağlı Instagram hesabını bul (önce önbellek, sonra Composio'daki aktif hesaplar)
-async function resolve(key: string, link: Record<string, string>): Promise<{ acc: Acc; igUser: string; username: string } | null> {
+type Diag = { accounts: number; tried: string[]; errors: string[] };
+async function resolve(key: string, link: Record<string, string>, diag: Diag): Promise<{ acc: Acc; igUser: string; username: string } | null> {
   const list = await composio(key, '/api/v3/connected_accounts?toolkit_slugs=instagram&statuses=ACTIVE&limit=50');
   const items: Record<string, unknown>[] = (list?.items || list?.data || []).filter((a: Record<string, unknown>) =>
     String((a.status as string) || 'ACTIVE').toUpperCase() === 'ACTIVE');
   const accs: Acc[] = items.map(a => ({ id: String(a.id), user_id: (a.user_id as string) || (a.entity_id as string) || undefined }));
+  diag.accounts = accs.length;
   const ordered = [...accs.filter(a => a.id === link.composio_account_id), ...accs.filter(a => a.id !== link.composio_account_id)];
   for (const acc of ordered) {
     try {
       const info = await exec(key, acc, 'INSTAGRAM_GET_USER_INFO', { ig_user_id: 'me', fields: 'id,username' });
       const username = findKey(info, ['username']) || '';
       const igUser = findKey(info, ['id', 'user_id']) || '';
+      diag.tried.push(username ? '@' + username : acc.id);
       if (igUser && (!link.ig_username || username.toLowerCase() === link.ig_username.toLowerCase())) return { acc, igUser, username };
-    } catch { /* sonraki hesabı dene */ }
+    } catch (e) { diag.errors.push(String((e as Error).message || e).slice(0, 200)); console.error('instagram resolve', acc.id, e); }
   }
   return null;
 }
@@ -77,8 +80,17 @@ Deno.serve(async (req: Request) => {
     if (!key) return json({ error: 'no_key', message: 'Sunucuda COMPOSIO_API_KEY tanımlı değil.' }, 503);
 
     const body = await req.json().catch(() => ({}));
-    const found = await resolve(key, link);
-    if (!found) return json({ error: 'no_account', message: `Composio'da @${link.ig_username} için aktif Instagram bağlantısı bulunamadı. API anahtarının, Instagram'ın bağlı olduğu Composio projesine ait olduğundan emin ol.` }, 404);
+    const diag: Diag = { accounts: 0, tried: [], errors: [] };
+    let found = null;
+    try { found = await resolve(key, link, diag); }
+    catch (e) { console.error('instagram list', e); return json({ error: 'composio', message: 'Composio hesap listesi alınamadı: ' + String((e as Error).message || e).slice(0, 200) }, 502); }
+    if (!found) {
+      console.error('instagram no_account', JSON.stringify(diag));
+      const why = !diag.accounts ? `Bu API anahtarının projesinde aktif Instagram bağlantısı yok (0 hesap). Anahtarı Instagram'ın bağlı olduğu projeden al ya da Instagram'ı bu projede bağla.`
+        : diag.errors.length ? `${diag.accounts} hesap bulundu ama sorgulanamadı: ${diag.errors[0]}`
+        : `${diag.accounts} hesap bulundu (${diag.tried.join(', ')}), @${link.ig_username} değil.`;
+      return json({ error: 'no_account', message: why, diag }, 404);
+    }
     if (found.acc.id !== link.composio_account_id || found.igUser !== link.ig_user_id) {
       await admin.rpc('ig_link_cache', { p_user: user.id, p_account: found.acc.id, p_ig_user: found.igUser });
     }
