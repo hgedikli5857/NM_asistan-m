@@ -74,3 +74,11 @@ Kurallar: `docs/mesaj-uretim-stratejisi.md`. Uygulama karşılığı: `js/iletis
 - Aynı kişiye 10 dakikada 1, günde 30 onay. Otomatik gönderim yok; gönderimden sonra Gönderildi / Cevap geldi / Vazgeçti işaretlenir.
 - "!" ile işaretli kişiler İletişim ve Koç liste çalışmasında listelenmez. Daha önce yazışılmamış kişiye metin önerilmez.
 - Üretilen metinler ve kullanıcının anlattığı durum kişi kartına yazılmaz; yalnızca bu cihazdaki "Geçmişim"de tutulur.
+
+## İletişim Masası (v3.5)
+Yöntem: `docs/gunluk-calisma-yontemi.md`. Kod: `js/iletisim/masa.js` (öncelik, rapor, etkinlik kontrolü, gün sonu).
+- **Bugün** (açılış): son 24 saat raporu, öncelik sırası (pencere açık + soru → devir → etkinlik teyidi → takip günü → soğuk), giden kutusu, gün sonu ve "yarın için tek iş".
+- **Masa**: kuyruktaki kişiler sırayla; yazışma otomatik okunur, etkinlik bilgisi AI'ya doğru bilgi olarak verilir, metindeki saat kayıtla uyuşmazsa uyarılır.
+- **Panel kuyruğu**: pencere açıksa onaylanan metin CRM giden kutusuna eklenir ve hemen gönderilir (CRM'in 10 dk / 30 günlük kuralları geçerli). Pencere kapalıysa telefondan.
+- Kapanış mesajları ("teşekkürler", "iyi günler") ve 14 günden eski mesajlar kuyruğa girmez. "!" grupları ve eşleşmeyen kişisel kişiler gösterilmez.
+- crm-panel tarafı: `supabase/crm-panel/20261121150000_nmd_masa.sql` (`nmd_desk`, `nmd_outbox_add`, `nmd_quick_reply_add`).

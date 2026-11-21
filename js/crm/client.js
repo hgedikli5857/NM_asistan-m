@@ -28,6 +28,24 @@ export async function crmSync() {
   return data.result;
 }
 
+// İletişim Masası: senkron + günlük rapor + öncelik verisi
+export async function crmDesk() {
+  const data = await call({ action: 'desk' });
+  localStorage.setItem(AUTO_KEY, String(Date.now()));
+  return data;
+}
+
+// Giden kutusu (panel kuyruğu): pencere açıksa CRM hemen gönderir
+export async function crmOutbox(prospectId, mesaj) {
+  const data = await call({ action: 'outbox', prospect_id: prospectId, mesaj });
+  return data.item;
+}
+
+export async function crmQrAdd(title, body) {
+  const data = await call({ action: 'qr_add', title, body });
+  return data.item;
+}
+
 export async function crmMessages(prospectId, limit = 60) {
   const data = await call({ action: 'messages', prospect_id: prospectId, limit });
   return data.messages || [];

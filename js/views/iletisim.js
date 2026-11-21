@@ -3,7 +3,8 @@ import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
 import { checkMessage, checkForScenario, autoFix, fillTemplate } from '../iletisim/uyum.js';
-import { crmMessages, crmSync, crmAutoSync, crmStatus, resultText, transcript, lastIncoming, awaitingReply, recentWriters, messagesHTML } from '../crm/client.js';
+import { crmMessages, crmSync, crmStatus, crmDesk, crmOutbox, crmQrAdd, resultText, transcript, lastIncoming, awaitingReply, recentWriters, messagesHTML } from '../crm/client.js';
+import { buildQueue, reportRows, eventFacts, eventMismatch, eventDate, eventTime, eventPlace, dayClose, OUTBOX_LABEL } from '../iletisim/masa.js';
 import { SCENARIOS as MSG_SC, HITAP, SENDERS, STOP_FOLLOWUP, LIMITS, BRAND_RULES, buildReplyPrompt, rewritePrompt, isExcluded, isCold, windowState, last4, checkLimits, hitapRule } from '../iletisim/strateji.js';
 import { CHANNELS, waNumber, addDays, stageLabel } from '../kazanim/model.js';
 import { pickerHTML, bindPicker } from '../ui/picker.js';
@@ -12,8 +13,9 @@ import { aiChat, aiAvailable, extractJSON, ensureShareConsent, prospectBrief, ge
 import { TEMPS } from '../kazanim/model.js';
 
 const TABS = [
+  { id: 'bugun', label: 'Bugün', icon: 'ti-sun' },
+  { id: 'cevap', label: 'Masa', icon: 'ti-sparkles' },
   { id: 'yaz', label: 'Mesaj yaz', icon: 'ti-pencil' },
-  { id: 'cevap', label: 'Cevap öner', icon: 'ti-sparkles' },
   { id: 'sablon', label: 'Şablonlar', icon: 'ti-template' },
   { id: 'itiraz', label: 'İtiraz rehberi', icon: 'ti-shield-question' },
   { id: 'pratik', label: 'Pratik', icon: 'ti-messages' }
@@ -21,7 +23,7 @@ const TABS = [
 export { AI_KEY, getApiKey };
 
 let el, ctx;
-let state = { tab: 'yaz', prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '', ai: false, reply: { goal: 'auto', hitap: 'siz', sender: 'kisisel', warmOk: false, input: '', conv: null, result: null, approve: null, busy: false, error: '' } };
+let state = { tab: 'bugun', desk: { status: 'idle', data: null, queue: [], error: '', at: 0, linked: null }, queuePos: -1, prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '', ai: false, reply: { goal: 'auto', hitap: 'siz', sender: 'kisisel', warmOk: false, input: '', conv: null, result: null, approve: null, busy: false, error: '' } };
 
 export async function renderIletisim(target, context) {
   el = target; ctx = context;
@@ -60,15 +62,32 @@ export async function renderIletisim(target, context) {
   } catch { /* yok */ }
   draw();
   if (state.tab === 'cevap') loadConv();
-  // WhatsApp bot CRM: yeni yazanları arka planda getir (30 dakikada bir)
-  crmAutoSync().then(async res => {
-    if (res && (res.yeni || res.guncellenen) && el?.isConnected) {
-      await loadProspects();
-      if (res.yeni) toast(`WhatsApp: ${res.yeni} yeni kişi listeye eklendi.`);
-      if (state.tab === 'cevap' && !state.reply.busy) { draw(); }
-    }
-  });
+  // Masa verisi (rapor + kuyruk + etkinlik + hazır cevap): Bugün açılınca ya da 3 dakikadan eskiyse
+  loadDesk();
 }
+
+async function loadDesk(force = false) {
+  const d = state.desk;
+  if (d.status === 'loading') return;
+  if (!force && d.data && Date.now() - d.at < 3 * 60e3) return;
+  if (d.linked === null) d.linked = !!(await crmStatus()).linked;
+  if (!d.linked) { d.status = 'off'; if (state.tab === 'bugun') draw(); return; }
+  d.status = 'loading'; d.error = '';
+  if (state.tab === 'bugun') draw();
+  try {
+    const res = await crmDesk();
+    d.data = res.desk; d.at = Date.now(); d.status = 'ok';
+    if (res.sync?.yeni) toast(`WhatsApp: ${res.sync.yeni} yeni kişi listeye eklendi.`);
+    await loadProspects();
+    d.queue = buildQueue({ convs: d.data.convs, prospects: state.prospects, events: d.data.etkinlikler });
+  } catch (err) { d.status = 'error'; d.error = err.message; }
+  if (!el?.isConnected) return;
+  // Masa'da çalışırken formu bozma; sadece sıra başlığını güncelle
+  if (state.tab === 'cevap') { const qh = el.querySelector('#q-head'); if (qh) qh.outerHTML = queueHeadHTML(); }
+  else if (state.tab === 'bugun' || state.tab === 'sablon') draw();
+}
+
+const deskEvents = () => state.desk.data?.etkinlikler || [];
 
 async function loadProspects() {
   const p = await fetchAll(() => supabase.from('prospects').select('id, full_name, phone, instagram, stage, temperature, tags, occupation, interests, notes, next_follow_up_at, last_contact_at, extra').is('deleted_at', null).order('full_name'));
@@ -128,7 +147,7 @@ const currentProspect = () => state.prospects.find(p => p.id === state.prospectI
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === state.tab));
   const body = el.querySelector('#i-body');
-  body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : state.tab === 'cevap' ? viewReply() : viewObjections();
+  body.innerHTML = state.tab === 'bugun' ? viewToday() : state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : state.tab === 'cevap' ? viewReply() : viewObjections();
   if (state.tab === 'yaz') { renderCheck(); bindPicker(el, { id: 'i-pick', prospects: state.prospects, onSelect: selectProspect }); }
   if (state.tab === 'cevap') bindPicker(el, { id: 'r-pick', prospects: state.prospects, onSelect: p => {
     state.prospectId = p ? p.id : ''; state.reply.warmOk = false; state.reply.conv = null;
@@ -213,6 +232,7 @@ function viewLibrary() {
       </div>
       <button class="btn btn-gold" data-act="new-tpl" style="margin-left:auto"><i class="ti ti-plus" aria-hidden="true"></i> Kendi şablonum</button>
     </div>
+    ${qrSectionHTML()}
     <div class="grid lib-grid">
       ${list.map(t => `<article class="card tpl-card">
         <header><h3>${esc(t.title)}</h3>
@@ -226,6 +246,19 @@ function viewLibrary() {
         </footer>
       </article>`).join('')}
     </div>`;
+}
+
+// CRM (WhatsApp bot paneli) hazır cevapları
+function qrSectionHTML() {
+  const qr = state.desk.data?.quick_replies || [];
+  if (!qr.length) return '';
+  return `<section class="card qr-sec"><h2><i class="ti ti-bookmark" aria-hidden="true"></i> CRM hazır cevapları <span class="badge">${qr.length}</span></h2>
+    <div class="grid lib-grid">${qr.map((q, i) => {
+      const f = checkMessage(q.body);
+      return `<article class="tpl-card card-inset"><header><h3>${esc(q.title)}</h3>${f.length ? '<span class="badge warn">Marka filtresi</span>' : ''}</header>
+        <p class="tpl-text">${esc(q.body)}</p>
+        <footer><button class="btn btn-ghost" data-qr="${i}"><i class="ti ti-send" aria-hidden="true"></i> Kullan</button></footer></article>`;
+    }).join('')}</div></section>`;
 }
 
 function templateDialog(t = null) {
@@ -289,7 +322,7 @@ function viewObjections() {
 function onClick(e) {
   const t = e.target;
   const tab = t.closest('[data-tab]');
-  if (tab) { state.tab = tab.dataset.tab; history.replaceState(null, '', `#/iletisim?tab=${state.tab}`); draw(); if (state.tab === 'cevap') loadConv(); return; }
+  if (tab) { state.tab = tab.dataset.tab; history.replaceState(null, '', `#/iletisim?tab=${state.tab}`); draw(); if (state.tab === 'cevap') loadConv(); if (['bugun', 'sablon', 'cevap'].includes(state.tab)) loadDesk(); return; }
   const pur = t.closest('[data-purpose]');
   if (pur) { state.purpose = pur.dataset.purpose; draw(); return; }
   const fp = t.closest('[data-fpurpose]');
@@ -298,6 +331,12 @@ function onClick(e) {
   if (use) { useTemplate(allTemplates().find(x => String(x.id) === use.dataset.use)?.body); return; }
   const rp = t.closest('[data-rpick]');
   if (rp) { state.reply.approve = { text: state.reply.result.secenekler[+rp.dataset.rpick].mesaj, approved: false, status: '' }; draw(); return; }
+  const qrb = t.closest('[data-qr]');
+  if (qrb) { useTemplate(state.desk.data?.quick_replies?.[+qrb.dataset.qr]?.body); return; }
+  const qo = t.closest('[data-q]');
+  if (qo) { openQueue(+qo.dataset.q); return; }
+  const qn = t.closest('[data-qnav]');
+  if (qn) { navQueue(+qn.dataset.qnav); return; }
   const rw = t.closest('[data-rw]');
   if (rw) { selectReplyProspect(rw.dataset.rw); return; }
   const aps = t.closest('[data-apstatus]');
@@ -323,6 +362,9 @@ function onClick(e) {
     case 'ap-back': state.reply.approve = null; draw(); break;
     case 'ap-new': state.reply.approve = null; state.reply.result = null; draw(); break;
     case 'hist-clear': localStorage.removeItem(histKey()); draw(); break;
+    case 'desk-refresh': loadDesk(true); break;
+    case 'ap-panel': approve('panel'); break;
+    case 'ap-qr': saveQuickReply(); break;
     case 'r-temp': setReplyTemp(); break;
     case 'sc-end': endPractice(b); break;
     case 'sc-reset': state.practice = null; draw(); break;
@@ -420,6 +462,7 @@ async function onSubmit(e) {
   const form = e.target;
   if (form.dataset.form === 'chat') return sendChat(form);
   if (form.dataset.form === 'reply') return suggestReply(form);
+  if (form.dataset.form === 'tomorrow') return addTomorrow(form);
   if (form.dataset.form !== 'tpl') return;
   const f = n => form.elements.namedItem(n);
   const err = form.querySelector('#t-error');
@@ -503,6 +546,119 @@ function recipientHTML(p, r) {
   </div>`;
 }
 
+// ====================================================================
+// Bugün — sabah raporu, öncelik kuyruğu, giden kutusu, gün sonu
+function viewToday() {
+  const d = state.desk;
+  if (d.status === 'off') return `<div class="card empty"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i><h2>WhatsApp bot CRM bağlı değil</h2>
+    <p class="muted">Günlük rapor ve öncelik listesi CRM'den gelir. Bağlantı için yöneticine ya da Ayarlar → WhatsApp bot CRM bölümüne bak.</p></div>`;
+  if (!d.data) return `<div class="card empty">${d.status === 'error'
+    ? `<p class="error">Masa yüklenemedi: ${esc(d.error)}</p><button class="btn btn-primary" data-act="desk-refresh">Tekrar dene</button>`
+    : '<p class="muted"><i class="ti ti-loader-2" aria-hidden="true"></i> Son 24 saat taranıyor, öncelik listesi hazırlanıyor…</p>'}</div>`;
+  const data = d.data;
+  const q = d.queue;
+  const at = new Date(d.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const close = dayClose(readLS(histKey()), data.outbox || []);
+  const nameOf = pid => state.prospects.find(p => p.id === pid)?.full_name || 'Kişi';
+  return `<div class="today">
+    <section class="card report-card">
+      <div class="rw-head"><h2><i class="ti ti-sun" aria-hidden="true"></i> Son 24 saat</h2>
+        <button class="btn btn-ghost sm" data-act="desk-refresh" ${d.status === 'loading' ? 'disabled' : ''}><i class="ti ti-refresh" aria-hidden="true"></i> ${d.status === 'loading' ? 'Yenileniyor…' : 'Yenile · ' + esc(at)}</button></div>
+      <ul class="report">${reportRows(data.report, data.etkinlikler).map(r => `
+        <li class="${r.warn ? 'warn' : ''}"><i class="ti ${r.icon}" aria-hidden="true"></i><span class="lbl">${esc(r.label)}</span><span class="val">${esc(r.value)}</span></li>`).join('')}</ul>
+    </section>
+
+    <section class="card">
+      <div class="rw-head"><h2><i class="ti ti-list-numbers" aria-hidden="true"></i> Öncelik sırası <span class="badge">${q.length}</span></h2>
+        ${q.length ? '<button class="btn btn-primary sm" data-q="0"><i class="ti ti-player-play" aria-hidden="true"></i> Masada başla</button>' : ''}</div>
+      <p class="small muted">Sıra: pencere açık ve soru soran → yanlış bilgi düzeltme → etkinlik teyidi → takip günü → soğuk. "!" grupları listede yok.</p>
+      ${q.length ? `<ol class="queue">${q.map((it, i) => queueRowHTML(it, i)).join('')}</ol>`
+        : '<p class="muted">Şu an cevap bekleyen ya da takip günü gelen kimse yok.</p>'}
+    </section>
+
+    ${(data.outbox || []).length ? `<section class="card">
+      <h2><i class="ti ti-send" aria-hidden="true"></i> Giden kutusu (son 20)</h2>
+      <ul class="outbox">${data.outbox.slice(0, 8).map(o => `<li>
+        <span class="badge ${o.durum === 'gonderildi' ? 'ok' : o.durum === 'hata' ? 'warn' : o.durum === 'onay_bekliyor' ? 'gold' : ''}">${esc(OUTBOX_LABEL[o.durum] || o.durum)}</span>
+        <strong>${esc(o.prospect_id ? nameOf(o.prospect_id) : 'Kişi')}</strong>
+        <span class="muted small">${esc(new Date(o.olusturma).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${esc(o.ozet || '')}</span>
+        ${o.hata ? `<span class="error small">${esc(o.hata)}</span>` : ''}</li>`).join('')}</ul>
+    </section>` : ''}
+
+    <section class="card day-close">
+      <h2><i class="ti ti-moon" aria-hidden="true"></i> Gün sonu</h2>
+      <p>Bugün <strong>${close.onaylanan}</strong> metin onayladın: ${close.gonderildi} gönderildi, ${close.cevap} cevap geldi, ${close.vazgecti} vazgeçti${close.isaretsiz ? `, <strong>${close.isaretsiz} işaretsiz</strong>` : ''}.
+        Panel kuyruğu: ${close.kuyruk}${close.kuyrukBekleyen ? ` (${close.kuyrukBekleyen} bekliyor)` : ''}${close.kuyrukHata ? `, <span class="error">${close.kuyrukHata} hata</span>` : ''}.
+        Sırada bekleyen: <strong>${q.length}</strong> kişi.</p>
+      <form data-form="tomorrow" class="row-form">
+        <label for="tm-title" class="small">Yarın için tek net iş</label>
+        <div class="row"><input id="tm-title" name="title" maxlength="140" placeholder="Ör. Etkinliğe kayıtlı 2 kişiye saat teyidi gönder">
+          <button class="btn btn-gold" type="submit"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Yarına ekle</button></div>
+        <p class="small muted">Görevlerine yarın için eklenir; Panel'de hatırlatma olarak görünür.</p>
+      </form>
+    </section>
+  </div>`;
+}
+
+function queueRowHTML(it, i) {
+  const c = it.conv;
+  const p = it.p;
+  const last = c?.last_in_at ? new Date(c.last_in_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  const STG = { liste: 'Liste', temas: 'İlk temas', davet: 'Davet', sunum: 'Sunum', takip: 'Takip', musteri: 'Müşteri', is_ortagi: 'İş ortağı', pasif: 'Pasif' };
+  return `<li class="q-row">
+    <button class="q-open" data-q="${i}" aria-label="${esc(p.full_name)} masada aç">
+      <div class="q-top"><span class="q-no">${i + 1}</span><strong>${esc(p.full_name)}</strong>${last4(p.phone) ? `<span class="muted small">··${esc(last4(p.phone))}</span>` : ''}
+        ${c?.protected ? '<span class="badge gold">Korunan</span>' : ''}
+        <span class="badge ${it.windowOpen ? 'ok' : ''}">${it.windowOpen ? 'Pencere açık' : c ? 'Pencere kapalı' : 'Telefondan'}</span></div>
+      <div class="q-meta small muted">${esc(STG[p.stage] || p.stage)} · ${esc(TEMPS[p.temperature]?.label || '')} · Son gelen: ${esc(last)}</div>
+      ${c?.last_in_body && it.awaiting ? `<div class="q-msg small">“${esc(String(c.last_in_body).slice(0, 140))}”</div>` : ''}
+      <div class="chips">${it.reasons.map(r => `<span class="badge ${/Soru|devret/.test(r) ? 'gold' : /Hassas/.test(r) ? 'warn' : ''}">${esc(r)}</span>`).join('')}</div>
+    </button></li>`;
+}
+
+// Masa'nın üstünde: sıradaki kişiler arasında gezinme
+function queueHeadHTML() {
+  const q = state.desk.queue;
+  const i = q.findIndex(x => x.pid === state.prospectId);
+  if (!q.length) return '<div id="q-head"></div>';
+  const it = i >= 0 ? q[i] : null;
+  return `<div id="q-head" class="q-head card">
+    <div><strong>Sıra ${i >= 0 ? `${i + 1}/${q.length}` : `— /${q.length}`}</strong>
+      ${it ? it.reasons.map(r => `<span class="badge ${/Soru|devret/.test(r) ? 'gold' : /Hassas/.test(r) ? 'warn' : ''}">${esc(r)}</span>`).join(' ') : '<span class="muted small">Seçili kişi sırada değil</span>'}</div>
+    <div class="quick">
+      <button class="btn btn-ghost sm" data-qnav="-1" ${i <= 0 ? 'disabled' : ''}><i class="ti ti-chevron-left" aria-hidden="true"></i> Önceki</button>
+      <button class="btn btn-primary sm" data-qnav="1" ${i >= q.length - 1 ? 'disabled' : ''}>${i < 0 ? 'Sıradan başla' : 'Sıradaki'} <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+    </div></div>`;
+}
+
+function openQueue(i) {
+  const it = state.desk.queue[i];
+  if (!it) return;
+  state.tab = 'cevap';
+  history.replaceState(null, '', '#/iletisim?tab=cevap');
+  // Senaryo ön seçimi: hassas → maddi, soru/cevap bekliyor → sen karar ver, sadece takip günü → takip
+  state.reply.goal = it.sensitive ? 'maddi' : it.awaiting ? 'auto' : 'takip';
+  state.reply.input = '';
+  selectReplyProspect(it.pid);
+}
+
+function navQueue(step) {
+  const q = state.desk.queue;
+  const i = q.findIndex(x => x.pid === state.prospectId);
+  openQueue(i < 0 ? 0 : Math.min(q.length - 1, Math.max(0, i + step)));
+}
+
+async function addTomorrow(form) {
+  const title = form.elements.namedItem('title').value.trim();
+  if (title.length < 3) { toast('Yarın için bir iş yaz.'); return; }
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  const due = d.toLocaleDateString('en-CA');
+  const { error } = await supabase.from('tasks').insert({ org_id: ctx.org.id, title, kind: 'genel', due_date: due });
+  if (error) { toast(trError(error)); return; }
+  form.reset();
+  toast('Yarın için görev eklendi.');
+}
+
 function convBoxHTML(c, crm) {
   if (!crm?.id) return '<p class="small muted"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Bu kişinin WhatsApp bot konuşması yok; son mesajı aşağıya yapıştır.</p>';
   if (!c || c.status === 'loading') return '<p class="small muted"><i class="ti ti-loader-2" aria-hidden="true"></i> WhatsApp konuşması yükleniyor…</p>';
@@ -553,7 +709,7 @@ function viewReply() {
   const res = r.result;
   const cp = currentProspect();
   const hist = readLS(histKey()).slice(0, 15);
-  return `<div class="compose">
+  return `${queueHeadHTML()}<div class="compose">
     <form class="card" data-form="reply" novalidate>
       <h2><i class="ti ti-message-question" aria-hidden="true"></i> Ne oldu?</h2>
       ${recentHTML()}
@@ -606,29 +762,50 @@ function resultHTML(res, cp) {
     ${cp && TEMPS[res.sicaklik] && res.sicaklik !== cp.temperature ? `<div class="quick" style="margin-top:12px"><button class="btn btn-ghost" data-act="r-temp">Sıcaklığı "${TEMPS[res.sicaklik].label}" yap</button></div>` : ''}`;
 }
 
+// Kişinin 24 saat penceresi (yüklenen konuşmadan, yoksa senkron bilgisinden)
+function winFor(p) {
+  if (!p) return { known: false };
+  const c = state.reply.conv;
+  const liveIn = c?.pid === p.id && c.status === 'ok' ? lastIncoming(c.msgs) : null;
+  return liveIn ? windowState({ extra: { crm: { conv: { last_in_at: liveIn } } } }) : windowState(p);
+}
+const canPanel = p => !!(p?.extra?.crm?.id && state.desk.linked !== false && winFor(p).open);
+
 function approveHTML(cp, ap) {
   const f = checkForScenario(ap.text, state.reply.result.senaryo || state.reply.goal);
   const lim = checkLimits(readLS(sendKey()), cp?.id);
   const blocked = f.length || (!ap.approved && !lim.ok);
+  const panel = canPanel(cp);
   return `<div class="approve card-inset">
     <h3><i class="ti ti-user-check" aria-hidden="true"></i> Onay</h3>
     ${cp ? `<p class="small"><strong>Alıcı:</strong> ${esc(cp.full_name)}${last4(cp.phone) ? ' · ••' + esc(last4(cp.phone)) : ''}${cp.extra?.crm?.protected ? ' · <span class="badge gold">Korunan</span>' : ''}</p>` : '<p class="small muted">Alıcı seçilmedi: yalnızca kopyalayabilirsin.</p>'}
     <div class="field"><label for="ap-text">Metni oku, gerekirse düzenle</label>
       <textarea id="ap-text" rows="5" ${ap.approved ? 'readonly' : ''}>${esc(ap.text)}</textarea></div>
-    <div id="ap-check">${checkListHTML(f)}</div>
+    <div id="ap-check">${checkListHTML(f)}${mismatchHTML(ap.text, cp)}</div>
     ${!ap.approved ? `
       ${!lim.ok ? `<p class="error small">${esc(lim.reason)}</p>` : `<p class="small muted">Bugün kalan onay hakkın: ${lim.remaining}/${LIMITS.daily}</p>`}
       <div class="quick">
+        ${panel ? `<button class="btn btn-gold" data-act="ap-panel" ${blocked ? 'disabled' : ''}><i class="ti ti-send" aria-hidden="true"></i> Onayla, panel kuyruğundan gönder</button>` : ''}
         <button class="btn btn-primary" data-act="ap-copy" ${blocked ? 'disabled' : ''}><i class="ti ti-copy" aria-hidden="true"></i> Onayla ve kopyala</button>
         ${cp && waNumber(cp.phone) ? `<button class="btn btn-gold" data-act="ap-wa" ${blocked ? 'disabled' : ''}><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Onayla, WhatsApp'ta aç</button>` : ''}
         <button class="btn btn-ghost" data-act="ap-back">Geri</button>
       </div>
-      <p class="small muted">Otomatik gönderim yok. WhatsApp açıldığında mesajı sen gönderirsin.</p>`
-    : `<p class="small"><span class="badge ok">Onaylandı</span> Gönderdikten sonra durumu işaretle:</p>
+      <p class="small muted">${panel ? 'Pencere açık: panel kuyruğu mesajı işletme hattından hemen gönderir. Telefondan göndermek istersen kopyala ya da WhatsApp\'ı aç.'
+        : cp?.extra?.crm?.id ? 'Pencere kapalı: panelden serbest metin gönderilemez, telefondan gönder.' : 'WhatsApp açıldığında mesajı sen gönderirsin.'}</p>`
+    : `${ap.via === 'panel' ? `<p class="small"><span class="badge ${ap.outbox === 'onay_bekliyor' ? 'gold' : 'ok'}">Panel kuyruğu: ${esc(OUTBOX_LABEL[ap.outbox] || ap.outbox || '')}</span></p>` : ''}
+      <p class="small"><span class="badge ok">Onaylandı</span> ${ap.via === 'panel' ? 'Cevap gelince ya da vazgeçerse işaretle:' : 'Gönderdikten sonra durumu işaretle:'}</p>
       <div class="quick">${Object.entries(STATUS).map(([k, l]) => `<button class="btn ${ap.status === k ? 'btn-primary' : 'btn-ghost'}" data-apstatus="${k}" ${ap.status || !cp ? 'disabled' : ''}>${l}</button>`).join('')}
-        <button class="btn btn-ghost" data-act="ap-new">Yeni metin</button></div>
+        <button class="btn btn-ghost" data-act="ap-new">Yeni metin</button>
+        ${state.desk.linked ? '<button class="btn btn-ghost" data-act="ap-qr"><i class="ti ti-bookmark" aria-hidden="true"></i> Hazır cevap olarak kaydet</button>' : ''}
+        ${state.desk.queue.length ? '<button class="btn btn-primary" data-qnav="1">Sıradaki kişi <i class="ti ti-chevron-right" aria-hidden="true"></i></button>' : ''}</div>
       ${ap.status ? `<p class="small muted">${esc(STATUS[ap.status])} olarak işaretlendi.</p>` : ''}`}
   </div>`;
+}
+
+// Etkinlik saati kayıtla uyuşmuyorsa uyar (engellemez)
+function mismatchHTML(text, cp) {
+  const m = eventMismatch(text, deskEvents(), cp?.id);
+  return m.length ? `<div class="uyum warn"><p class="small"><strong>${esc(m[0].cat)}:</strong> metindeki saat “${esc(m[0].hits.join('”, “'))}”. ${esc(m[0].tip)}</p></div>` : '';
 }
 
 function checkListHTML(f) {
@@ -643,8 +820,8 @@ function onApproveInput(e) {
   state.reply.approve.text = e.target.value;
   const f = checkForScenario(e.target.value, state.reply.result.senaryo || state.reply.goal);
   const lim = checkLimits(readLS(sendKey()), currentProspect()?.id);
-  el.querySelector('#ap-check').innerHTML = checkListHTML(f);
-  el.querySelectorAll('[data-act="ap-copy"], [data-act="ap-wa"]').forEach(b => { b.disabled = !!f.length || !lim.ok; });
+  el.querySelector('#ap-check').innerHTML = checkListHTML(f) + mismatchHTML(e.target.value, currentProspect());
+  el.querySelectorAll('[data-act="ap-copy"], [data-act="ap-wa"], [data-act="ap-panel"]').forEach(b => { b.disabled = !!f.length || !lim.ok; });
 }
 
 async function approve(mode) {
@@ -653,7 +830,16 @@ async function approve(mode) {
   if (!text || checkForScenario(text, r.result.senaryo || r.goal).length) return;
   const lim = checkLimits(readLS(sendKey()), p?.id);
   if (!lim.ok) { toast(lim.reason); return; }
-  if (mode === 'wa') {
+  if (mode === 'panel') {
+    if (!canPanel(p)) { toast('Pencere kapalı: telefondan gönder.'); return; }
+    if (!window.confirm(`${p.full_name} kişisine bu mesaj WhatsApp işletme hattından şimdi gönderilecek. Onaylıyor musun?`)) return;
+    try {
+      const item = await crmOutbox(p.id, text);
+      ap.via = 'panel'; ap.outbox = item?.durum || '';
+      toast(item?.durum === 'onay_bekliyor' ? 'Pencere kapanmış: mesaj panelde onay bekliyor.' : 'Panel kuyruğuna eklendi, gönderiliyor.');
+      state.desk.at = 0; // rapor bir sonraki açılışta yenilensin
+    } catch (err) { toast(`Gönderilemedi: ${err.message}`); return; }
+  } else if (mode === 'wa') {
     const n = waNumber(p?.phone); if (!n) return;
     window.open(`https://wa.me/${n}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   } else {
@@ -666,6 +852,15 @@ async function approve(mode) {
   writeLS(histKey(), [{ at: now, name: p ? p.full_name : '', sc: r.result.senaryo || r.goal, text }, ...readLS(histKey())].slice(0, HIST_MAX));
   ap.approved = true;
   draw();
+  if (ap.via === 'panel' && ap.outbox && ap.outbox !== 'onay_bekliyor') markStatus('gonderildi');
+}
+
+async function saveQuickReply() {
+  const ap = state.reply.approve; if (!ap?.text) return;
+  const title = window.prompt('Hazır cevap başlığı (CRM panelinde görünür):', (MSG_SC[state.reply.result?.senaryo]?.label || 'Hazır cevap'));
+  if (!title) return;
+  try { await crmQrAdd(title.trim(), ap.text.trim()); toast('Hazır cevap CRM\'e kaydedildi.'); state.desk.at = 0; }
+  catch (err) { toast(`Kaydedilemedi: ${err.message}`); }
 }
 
 async function markStatus(status) {
@@ -719,7 +914,7 @@ async function suggestReply(form) {
   }
   const owner = myName() || 'Hakan';
   try {
-    const prompt = buildReplyPrompt({ scenario: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history, conversation: conv, hitap: r.hitap, sender: r.sender, ownerName: owner });
+    const prompt = buildReplyPrompt({ scenario: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history, conversation: conv, facts: eventFacts(deskEvents(), p?.id), hitap: r.hitap, sender: r.sender, ownerName: owner });
     let out;
     try {
       out = extractJSON(await aiChat({ maxTokens: 1800, messages: [{ role: 'user', content: prompt }] }));
