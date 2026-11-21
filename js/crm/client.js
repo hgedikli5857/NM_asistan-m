@@ -113,3 +113,35 @@ function fmt(iso) {
   if (Number.isNaN(+d)) return '';
   return d.toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
+
+// ---- Cevap öner için konuşma yardımcıları ----
+const WHO_P = { lead: 'Kişi', bot: 'Bot', insan: 'Ben', sistem: 'Sistem' };
+
+// AI'ya verilecek kısa yazışma dökümü (eskiden yeniye, son `max` mesaj)
+export function transcript(msgs, max = 20) {
+  return (msgs || []).filter(m => m.sender_type !== 'sistem').slice(-max).map(m => {
+    const who = m.direction === 'gelen' ? 'Kişi' : (WHO_P[m.sender_type] || 'Ben');
+    const body = m.body ? String(m.body).replace(/\s+/g, ' ').slice(0, 400) : `[${m.content_type || 'medya'}]`;
+    return `${who}: ${body}`;
+  }).join('\n');
+}
+
+// Son gelen mesajın zamanı (24 saat penceresi için)
+export function lastIncoming(msgs) {
+  const t = (msgs || []).filter(m => m.direction === 'gelen').map(m => m.created_at).sort().pop();
+  return t || null;
+}
+
+// Son mesaj kişiden mi geldi? (cevap bekliyor)
+export function awaitingReply(msgs) {
+  const real = (msgs || []).filter(m => m.sender_type !== 'sistem');
+  return real.length ? real[real.length - 1].direction === 'gelen' : false;
+}
+
+// Son yazanlar: CRM konuşması olan, en son mesajı en yeni kişiler
+export function recentWriters(prospects, limit = 6) {
+  return prospects
+    .filter(p => p.extra?.crm?.conv?.last_message_at)
+    .sort((a, b) => new Date(b.extra.crm.conv.last_message_at) - new Date(a.extra.crm.conv.last_message_at))
+    .slice(0, limit);
+}

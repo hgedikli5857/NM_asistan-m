@@ -89,7 +89,7 @@ export function checkLimits(log, prospectId, now = Date.now()) {
   return { ok: true, remaining: LIMITS.daily - todays.length };
 }
 
-export function buildReplyPrompt({ scenario = 'auto', input, brief, history, hitap = 'siz', sender = 'kisisel', ownerName = 'Hakan' }) {
+export function buildReplyPrompt({ scenario = 'auto', input, brief, history, conversation = '', hitap = 'siz', sender = 'kisisel', ownerName = 'Hakan' }) {
   const sc = SCENARIOS[scenario] || SCENARIOS.auto;
   const list = Object.entries(SCENARIOS).filter(([k]) => !['auto', 'davet', 'itiraz'].includes(k))
     .map(([k, v]) => `- ${k} (${v.label}): ${v.approach}`).join('\n');
@@ -102,8 +102,8 @@ SENARYO: ${sc.label}. Yaklaşım: ${sc.approach}
 ${scenario === 'auto' ? 'Senaryolar:\n' + list : ''}
 Kişi: ${brief || 'bilinmiyor'}
 ${history ? 'Önceki temaslar:\n' + history : ''}
-${ownerName}'ın anlattığı durum / kişinin mesajı:
-«${input}»
+${conversation ? `Son WhatsApp yazışması (eskiden yeniye; "Ben" = ${ownerName}, "Bot" = dijital asistan):\n${conversation}\nCevabın, bu yazışmadaki SON mesaja uygun olsun; yazışmada konuşulanları tekrar sorma.` : ''}
+${input ? `${ownerName}'ın ek notu / anlattığı durum:\n«${input}»` : ''}
 Not: Durumda geçen sağlık, borç, maddi zorluk ya da aile konularını mesajda tekrar etme; yalnızca anlayış göster.
 
 Yalnızca şu JSON ile cevap ver, başka metin yazma:

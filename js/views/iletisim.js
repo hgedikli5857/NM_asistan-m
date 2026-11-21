@@ -3,6 +3,7 @@ import { supabase, fetchAll } from '../supabase.js';
 import { esc, toast, trError } from '../ui.js';
 import { PURPOSES, purposeLabel, SYSTEM_TEMPLATES, OBJECTIONS } from '../iletisim/content.js';
 import { checkMessage, checkForScenario, autoFix, fillTemplate } from '../iletisim/uyum.js';
+import { crmMessages, crmSync, crmAutoSync, crmStatus, resultText, transcript, lastIncoming, awaitingReply, recentWriters, messagesHTML } from '../crm/client.js';
 import { SCENARIOS as MSG_SC, HITAP, SENDERS, STOP_FOLLOWUP, LIMITS, BRAND_RULES, buildReplyPrompt, rewritePrompt, isExcluded, isCold, windowState, last4, checkLimits, hitapRule } from '../iletisim/strateji.js';
 import { CHANNELS, waNumber, addDays, stageLabel } from '../kazanim/model.js';
 import { pickerHTML, bindPicker } from '../ui/picker.js';
@@ -20,7 +21,7 @@ const TABS = [
 export { AI_KEY, getApiKey };
 
 let el, ctx;
-let state = { tab: 'yaz', prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '', ai: false, reply: { goal: 'auto', hitap: 'siz', sender: 'kisisel', warmOk: false, input: '', result: null, approve: null, busy: false, error: '' } };
+let state = { tab: 'yaz', prospects: [], mine: [], purpose: '', prospectId: '', text: '', filterPurpose: '', ai: false, reply: { goal: 'auto', hitap: 'siz', sender: 'kisisel', warmOk: false, input: '', conv: null, result: null, approve: null, busy: false, error: '' } };
 
 export async function renderIletisim(target, context) {
   el = target; ctx = context;
@@ -45,14 +46,11 @@ export async function renderIletisim(target, context) {
   el.addEventListener('change', onChange);
   el.addEventListener('submit', onSubmit);
 
-  const [p, s] = await Promise.all([
-    fetchAll(() => supabase.from('prospects').select('id, full_name, phone, instagram, stage, temperature, tags, occupation, interests, notes, next_follow_up_at, last_contact_at, extra').is('deleted_at', null).order('full_name')),
+  const [, s] = await Promise.all([
+    loadProspects(),
     supabase.from('scripts').select('*').order('created_at', { ascending: false })
   ]);
-  if (p.error) throw p.error;
   if (s.error) throw s.error;
-  // Çalışma dışı gruplar ("!") iletişim kapsamı dışında
-  state.prospects = p.data.filter(x => !isExcluded(x));
   state.mine = s.data;
   state.ai = await aiAvailable();
   // Başka sayfadan gönderilen taslak (Koç / Liste çalışması)
@@ -61,6 +59,59 @@ export async function renderIletisim(target, context) {
     if (draft) { sessionStorage.removeItem('nmd_draft'); state.tab = 'yaz'; state.text = draft.text || ''; if (draft.prospectId) state.prospectId = draft.prospectId; }
   } catch { /* yok */ }
   draw();
+  if (state.tab === 'cevap') loadConv();
+  // WhatsApp bot CRM: yeni yazanları arka planda getir (30 dakikada bir)
+  crmAutoSync().then(async res => {
+    if (res && (res.yeni || res.guncellenen) && el?.isConnected) {
+      await loadProspects();
+      if (res.yeni) toast(`WhatsApp: ${res.yeni} yeni kişi listeye eklendi.`);
+      if (state.tab === 'cevap' && !state.reply.busy) { draw(); }
+    }
+  });
+}
+
+async function loadProspects() {
+  const p = await fetchAll(() => supabase.from('prospects').select('id, full_name, phone, instagram, stage, temperature, tags, occupation, interests, notes, next_follow_up_at, last_contact_at, extra').is('deleted_at', null).order('full_name'));
+  if (p.error) throw p.error;
+  // Çalışma dışı gruplar ("!") iletişim kapsamı dışında
+  state.prospects = p.data.filter(x => !isExcluded(x));
+}
+
+// Seçili kişinin WhatsApp (CRM) konuşmasını getir — yalnızca ekranda ve AI isteminde kullanılır, kaydedilmez
+async function loadConv() {
+  const p = currentProspect();
+  const r = state.reply;
+  if (!p || !p.extra?.crm?.id) { r.conv = null; return; }
+  if (r.conv?.pid === p.id && r.conv.status !== 'error') return;
+  r.conv = { pid: p.id, status: 'loading', msgs: [] };
+  refreshRecipient();
+  try {
+    const msgs = await crmMessages(p.id, 40);
+    if (state.prospectId !== p.id) return;
+    r.conv = { pid: p.id, status: 'ok', msgs };
+  } catch (err) {
+    if (state.prospectId !== p.id) return;
+    r.conv = { pid: p.id, status: 'error', msgs: [], error: err.message };
+  }
+  refreshRecipient();
+}
+
+function refreshRecipient() {
+  const box = el?.querySelector('#r-recipient');
+  if (box) box.innerHTML = recipientHTML(currentProspect(), state.reply);
+  const lbl = el?.querySelector('label[for="r-input"]');
+  if (lbl) lbl.textContent = convReady() ? 'Ek not (isteğe bağlı) — durumu ya da amacını yaz' : 'Kişinin son mesajını yapıştır ya da durumu anlat *';
+}
+
+const convReady = () => {
+  const c = state.reply.conv;
+  return !!(c && c.pid === state.prospectId && c.status === 'ok' && c.msgs.some(m => m.direction === 'gelen'));
+};
+
+function selectReplyProspect(id) {
+  state.prospectId = id || ''; state.reply.warmOk = false; state.reply.conv = null;
+  state.reply.result = null; state.reply.approve = null;
+  draw(); loadConv();
 }
 
 // Sistem şablonları + kendi/ekip şablonları tek listede
@@ -80,8 +131,8 @@ function draw() {
   body.innerHTML = state.tab === 'yaz' ? viewCompose() : state.tab === 'sablon' ? viewLibrary() : state.tab === 'pratik' ? viewPractice() : state.tab === 'cevap' ? viewReply() : viewObjections();
   if (state.tab === 'yaz') { renderCheck(); bindPicker(el, { id: 'i-pick', prospects: state.prospects, onSelect: selectProspect }); }
   if (state.tab === 'cevap') bindPicker(el, { id: 'r-pick', prospects: state.prospects, onSelect: p => {
-    state.prospectId = p ? p.id : ''; state.reply.warmOk = false;
-    const box = el.querySelector('#r-recipient'); if (box) box.innerHTML = recipientHTML(currentProspect(), state.reply);
+    state.prospectId = p ? p.id : ''; state.reply.warmOk = false; state.reply.conv = null;
+    refreshRecipient(); loadConv();
   } });
 }
 
@@ -238,7 +289,7 @@ function viewObjections() {
 function onClick(e) {
   const t = e.target;
   const tab = t.closest('[data-tab]');
-  if (tab) { state.tab = tab.dataset.tab; history.replaceState(null, '', `#/iletisim?tab=${state.tab}`); draw(); return; }
+  if (tab) { state.tab = tab.dataset.tab; history.replaceState(null, '', `#/iletisim?tab=${state.tab}`); draw(); if (state.tab === 'cevap') loadConv(); return; }
   const pur = t.closest('[data-purpose]');
   if (pur) { state.purpose = pur.dataset.purpose; draw(); return; }
   const fp = t.closest('[data-fpurpose]');
@@ -247,6 +298,8 @@ function onClick(e) {
   if (use) { useTemplate(allTemplates().find(x => String(x.id) === use.dataset.use)?.body); return; }
   const rp = t.closest('[data-rpick]');
   if (rp) { state.reply.approve = { text: state.reply.result.secenekler[+rp.dataset.rpick].mesaj, approved: false, status: '' }; draw(); return; }
+  const rw = t.closest('[data-rw]');
+  if (rw) { selectReplyProspect(rw.dataset.rw); return; }
   const aps = t.closest('[data-apstatus]');
   if (aps) { markStatus(aps.dataset.apstatus); return; }
   const obj = t.closest('[data-obj]');
@@ -264,6 +317,7 @@ function onClick(e) {
     case 'del-tpl': deleteTemplate(b); break;
     case 'close': el.querySelector('#i-dialog').close(); break;
     case 'sc-start': startPractice(b.dataset.id); break;
+    case 'crm-refresh': refreshFromCrm(b); break;
     case 'ap-copy': approve('copy'); break;
     case 'ap-wa': approve('wa'); break;
     case 'ap-back': state.reply.approve = null; draw(); break;
@@ -429,8 +483,10 @@ const writeLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
 function recipientHTML(p, r) {
   if (!p) return `<div class="hint-box"><i class="ti ti-info-circle" aria-hidden="true"></i><span>Kişi seçmezsen metin genel olarak üretilir; pencere ve sınır kontrolü yapılamaz.</span></div>`;
-  const w = windowState(p);
   const crm = p.extra?.crm;
+  const c = r.conv?.pid === p.id ? r.conv : null;
+  const liveIn = c?.status === 'ok' ? lastIncoming(c.msgs) : null;
+  const w = liveIn ? windowState({ extra: { crm: { conv: { ...(crm?.conv || {}), last_in_at: liveIn } } } }) : windowState(p);
   const lastC = p.last_contact_at ? new Date(p.last_contact_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'kayıt yok';
   const win = !w.known ? '<span class="badge">Pencere: bot konuşması yok</span>'
     : w.open ? `<span class="badge ok">24 saat penceresi açık · ${w.hoursLeft ? w.hoursLeft + ' sa' : w.minutesLeft + ' dk'} kaldı</span>`
@@ -441,9 +497,53 @@ function recipientHTML(p, r) {
       <span class="badge">Son temas: ${esc(lastC)}</span></div>
     ${w.known && !w.open && r.sender === 'asistan' ? `<p class="error small">Pencere kapalı: bot numarasından yalnızca onaylı şablon gönderilebilir, serbest metin üretilmez.
       Kendi telefonundan yazacaksan "Gönderen"i değiştir.</p>` : ''}
+    ${convBoxHTML(c, crm)}
     ${isCold(p) ? `<label class="check small"><input type="checkbox" name="warm" ${r.warmOk ? 'checked' : ''}>
       <span>Bu kişiyle daha önce yazışma kaydı yok. Soğuk kişiye metin önerilmez; önce ilk temas yolunu netleştir. <strong>Daha önce yazıştık</strong> ise işaretle.</span></label>` : ''}
   </div>`;
+}
+
+function convBoxHTML(c, crm) {
+  if (!crm?.id) return '<p class="small muted"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Bu kişinin WhatsApp bot konuşması yok; son mesajı aşağıya yapıştır.</p>';
+  if (!c || c.status === 'loading') return '<p class="small muted"><i class="ti ti-loader-2" aria-hidden="true"></i> WhatsApp konuşması yükleniyor…</p>';
+  if (c.status === 'error') return `<p class="small error">WhatsApp konuşması alınamadı: ${esc(c.error)}. Son mesajı aşağıya yapıştırabilirsin.</p>`;
+  if (!c.msgs.length) return '<p class="small muted">WhatsApp konuşmasında mesaj yok.</p>';
+  const waiting = awaitingReply(c.msgs);
+  return `<div class="conv-box">
+    <p class="small"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> <strong>${c.msgs.length} mesaj yüklendi</strong>
+      ${waiting ? '<span class="badge gold">Son mesaj kişiden — cevap bekliyor</span>' : '<span class="badge">Son mesaj senden/bottan</span>'}</p>
+    <p class="small muted">AI bu yazışmayı okuyup son mesaja cevap önerecek. Mesajlar kaydedilmez.</p>
+    <details><summary class="small">Son mesajları göster</summary><div class="crm-msgs">${messagesHTML(c.msgs.slice(-8))}</div></details>
+  </div>`;
+}
+
+function recentHTML() {
+  const list = recentWriters(state.prospects, 6);
+  return `<div class="recent-writers">
+    <div class="rw-head"><span class="small muted">Son yazanlar</span>
+      <button type="button" class="btn btn-ghost sm" data-act="crm-refresh"><i class="ti ti-refresh" aria-hidden="true"></i> Yeni yazanları getir</button></div>
+    ${list.length ? `<div class="chips">${list.map(p => {
+      const cv = p.extra.crm.conv;
+      const wait = cv.handoff_status === 'bekliyor' || cv.unread_count > 0;
+      return `<button type="button" class="chip ${state.prospectId === p.id ? 'on' : ''}" data-rw="${esc(p.id)}">${wait ? '<span class="dot" aria-label="cevap bekliyor"></span>' : ''}${esc(p.full_name)}</button>`;
+    }).join('')}</div>` : '<p class="small muted">WhatsApp bot\'tan gelen konuşma yok.</p>'}
+  </div>`;
+}
+
+async function refreshFromCrm(btn) {
+  const st = await crmStatus();
+  if (!st.linked) { toast('WhatsApp bot CRM bağlı değil.'); return; }
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Getiriliyor…';
+  try {
+    const res = await crmSync();
+    await loadProspects();
+    state.reply.conv = null;
+    toast(`WhatsApp: ${resultText(res)}`);
+    draw(); loadConv();
+  } catch (err) {
+    toast(`Getirilemedi: ${err.message}`);
+    btn.disabled = false; btn.textContent = 'Tekrar dene';
+  }
 }
 
 function viewReply() {
@@ -456,9 +556,10 @@ function viewReply() {
   return `<div class="compose">
     <form class="card" data-form="reply" novalidate>
       <h2><i class="ti ti-message-question" aria-hidden="true"></i> Ne oldu?</h2>
+      ${recentHTML()}
       <div class="field">${pickerHTML({ id: 'r-pick', label: 'Kiminle yazışıyorsun?', prospects: state.prospects, selectedId: state.prospectId })}</div>
       <div id="r-recipient">${recipientHTML(cp, r)}</div>
-      <div class="field"><label for="r-input">Kişinin son mesajını yapıştır ya da durumu anlat *</label>
+      <div class="field"><label for="r-input">${convReady() ? 'Ek not (isteğe bağlı) — durumu ya da amacını yaz' : 'Kişinin son mesajını yapıştır ya da durumu anlat *'}</label>
         <textarea id="r-input" name="input" rows="5" maxlength="3000" placeholder="Ör. Ürün almak istiyordu, 3 gün süre istedi; şimdi mesajlara dönmüyor.">${esc(r.input)}</textarea>
         <p class="small muted">Sağlık, borç, maddi durum ve aile konuları yalnızca bu metni yazmak için kullanılır, hiçbir yere kaydedilmez.</p></div>
       <fieldset class="field"><legend>Durum</legend><div class="chips">
@@ -601,10 +702,12 @@ async function suggestReply(form) {
   r.warmOk = !!form.querySelector('[name="warm"]')?.checked;
   const p = currentProspect();
   const fail = msg => { r.error = msg; draw(); };
-  if (r.input.length < 10) return fail('Durumu biraz daha ayrıntılı anlat (en az bir cümle).');
+  const conv = convReady() ? transcript(r.conv.msgs, 20) : '';
+  if (!conv && r.input.length < 10) return fail('Durumu biraz daha ayrıntılı anlat (en az bir cümle) ya da WhatsApp konuşması olan bir kişi seç.');
   if (p && isExcluded(p)) return fail('Bu kişi çalışma dışı grupta ("!"). Metin üretilmez.');
   if (p && isCold(p) && !r.warmOk) return fail('Daha önce yazışılmamış kişiye metin önerilmez. Önce ilk temas yolunu netleştir.');
-  const w = p ? windowState(p) : { known: false };
+  const liveIn = conv ? lastIncoming(r.conv.msgs) : null;
+  const w = p ? (liveIn ? windowState({ extra: { crm: { conv: { last_in_at: liveIn } } } }) : windowState(p)) : { known: false };
   if (w.known && !w.open && r.sender === 'asistan') return fail('24 saat penceresi kapalı: bot numarasından serbest metin gönderilemez, yalnızca onaylı şablon.');
   if (p && !ensureShareConsent()) return;
   r.error = ''; r.busy = true; r.result = null; r.approve = null; draw();
@@ -616,7 +719,7 @@ async function suggestReply(form) {
   }
   const owner = myName() || 'Hakan';
   try {
-    const prompt = buildReplyPrompt({ scenario: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history, hitap: r.hitap, sender: r.sender, ownerName: owner });
+    const prompt = buildReplyPrompt({ scenario: r.goal, input: r.input, brief: p ? prospectBrief(p) : '', history, conversation: conv, hitap: r.hitap, sender: r.sender, ownerName: owner });
     let out;
     try {
       out = extractJSON(await aiChat({ maxTokens: 1800, messages: [{ role: 'user', content: prompt }] }));

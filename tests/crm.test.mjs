@@ -46,3 +46,24 @@ assert.ok(mh.includes('msg in') && mh.includes('msg out'));
 assert.ok(mh.includes('&lt;b&gt;') && mh.includes('[image]'));
 assert.ok(m.messagesHTML([]).includes('bulunamadı'));
 console.log('crm testleri geçti');
+
+// Cevap öner konuşma yardımcıları
+const msgs = [
+  { direction: 'gelen', sender_type: 'lead', body: 'Merhaba, ürünler hakkında bilgi alabilir miyim?', created_at: '2026-11-21T09:00:00Z' },
+  { direction: 'giden', sender_type: 'bot', body: 'Tabii, hangi ürünle ilgileniyorsunuz?', created_at: '2026-11-21T09:01:00Z' },
+  { direction: 'giden', sender_type: 'sistem', body: 'devir', created_at: '2026-11-21T09:01:30Z' },
+  { direction: 'gelen', sender_type: 'lead', body: null, content_type: 'image', created_at: '2026-11-21T09:05:00Z' }
+];
+const tr = m.transcript(msgs);
+assert.ok(tr.startsWith('Kişi: Merhaba'));
+assert.ok(tr.includes('Bot: Tabii'));
+assert.ok(!tr.includes('devir'));
+assert.ok(tr.endsWith('Kişi: [image]'));
+assert.equal(m.transcript(msgs, 1), 'Kişi: [image]');
+assert.equal(m.lastIncoming(msgs), '2026-11-21T09:05:00Z');
+assert.equal(m.awaitingReply(msgs), true);
+assert.equal(m.awaitingReply(msgs.slice(0, 3)), false);
+assert.equal(m.lastIncoming([]), null);
+const pr = [P(1, { last_message_at: '2026-11-20T10:00:00Z' }), P(2, { last_message_at: '2026-11-21T10:00:00Z' }), P(3, null)];
+assert.deepEqual(m.recentWriters(pr).map(p => p.id), [2, 1]);
+console.log('crm konuşma testleri geçti');

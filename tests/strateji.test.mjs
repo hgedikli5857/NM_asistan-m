@@ -63,3 +63,6 @@ assert.ok(st.buildReplyPrompt({ scenario: 'auto', input: 'x', hitap: 'sen', send
 assert.ok(st.buildReplyPrompt({ scenario: 'vazgecti', input: 'x' }).includes('SORU SORMA'));
 assert.equal(st.defaultHitap({}), 'siz');
 console.log('strateji testleri geçti');
+const pc = st.buildReplyPrompt({ scenario: 'auto', input: '', conversation: 'Kişi: Fiyat nedir?' });
+assert.ok(pc.includes('Son WhatsApp yazışması') && pc.includes('Kişi: Fiyat nedir?') && !pc.includes('ek notu'));
+console.log('konuşmalı istem testi geçti');
