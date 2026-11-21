@@ -9,7 +9,7 @@ import { TEMPLATES, SCENE_COUNT, REEL_TOTAL, defaultStoryboard, normalizeStorybo
   loadClip, releaseClips, loadReelFonts, renderReel, reelFileName } from '../pazarlama/reels.js';
 import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
-  shrinkPhoto, imageFromData } from '../pazarlama/karusel.js';
+  shrinkPhoto, shrinkLogo, imageFromData } from '../pazarlama/karusel.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
@@ -288,6 +288,7 @@ function onClick(e) {
     case 'kar-copycap': navigator.clipboard.writeText(suggestCaptionK(s.kar.deck)).then(() => toast('Açıklama metni kopyalandı.'), () => toast('Kopyalanamadı.')); break;
     case 'kar-open': kOpen(id); break;
     case 'kar-new': kNew(); break;
+    case 'kar-logo-del': s.kar.logo = null; s.kar.logoData = ''; kSaveBrand(); kOutReset(); draw(); break;
     case 'kar-photo-del': s.kar.photo = null; s.kar.photoData = ''; kSaveBrand(); kOutReset(); draw(); break;
   }
 }
@@ -518,6 +519,7 @@ function onReelInput(t) {
 async function onChange(e) {
   const t = e.target;
   if (t.id === 'k-photo') { kPhoto(t.files && t.files[0]); return; }
+  if (t.id === 'k-logo') { kLogo(t.files && t.files[0]); return; }
   if (t.dataset.kb === 'handle') { t.value = normalizeBrand({ handle: t.value }).handle; return; }
   if (t.dataset.reel === 'quality') { s.reel.quality = +t.value; return; }
   if (t.dataset.reel === 'handle') { t.value = normalizeHandle(t.value); return; }
@@ -637,18 +639,20 @@ function kLoadBrand() {
   let b = {};
   try { b = JSON.parse(localStorage.getItem(kBrandKey()) || '{}'); } catch { /* yok */ }
   if (!b.handle) { try { b.handle = JSON.parse(localStorage.getItem(brandKey()) || '{}').handle || ''; } catch { /* yok */ } }
+  if (b.name === undefined) b.name = ctx.profile?.full_name || '';
   return b;
 }
 function kSaveBrand() {
   const k = s.kar;
-  try { localStorage.setItem(kBrandKey(), JSON.stringify({ ...k.deck.brand, photo: k.photoData || '' })); }
+  try { localStorage.setItem(kBrandKey(), JSON.stringify({ ...k.deck.brand, photo: k.photoData || '', logo: k.logoData || '' })); }
   catch { toast('Fotoğraf cihazda saklanamadı (alan dolu); bu oturumda kullanılacak.'); }
 }
 function initKar() {
   const b = kLoadBrand();
   s.kar = { deck: sampleDeck(b), postId: null, count: 8, mode: 'konu', paste: '', open: 0, prev: 0,
-    photoData: b.photo || '', photo: null, out: [], busy: false, sample: true };
+    photoData: b.photo || '', photo: null, logoData: b.logo || '', logo: null, out: [], busy: false, sample: true };
   imageFromData(s.kar.photoData).then(img => { s.kar.photo = img; if (s.tab === 'karusel') kPaint(); });
+  imageFromData(s.kar.logoData).then(img => { s.kar.logo = img; if (s.tab === 'karusel') kPaint(); });
 }
 
 function viewKarusel() {
@@ -687,6 +691,14 @@ function viewKarusel() {
               ${k.photoData ? '<button type="button" class="link-btn" data-act="kar-photo-del">Kaldır</button>' : ''}
               <p class="small muted">Sol üst köşede görünür (portre önerilir). Yalnızca bu cihazda saklanır.</p></div>
           </div>
+          <div class="kar-photo">
+            ${k.logoData ? `<img src="${k.logoData}" alt="Logo" class="kar-logo">` : '<span class="kar-ph kar-logo"><i class="ti ti-crown" aria-hidden="true"></i></span>'}
+            <div><label class="btn btn-ghost" for="k-logo"><i class="ti ti-upload" aria-hidden="true"></i> ${k.logoData ? 'Logoyu değiştir' : 'Logo ekle'}</label>
+              <input type="file" id="k-logo" accept="image/png,image/webp,image/svg+xml,image/*" class="sr-only">
+              ${k.logoData ? '<button type="button" class="link-btn" data-act="kar-logo-del">Kaldır</button>' : ''}
+              <p class="small muted">Her sayfanın üstünde ve altında görünür. Arka planı saydam PNG en iyisi.</p></div>
+          </div>
+          <div class="field"><label for="k-name">Logodaki ad</label><input id="k-name" data-kb="name" maxlength="40" value="${esc(d.brand.name)}" placeholder="Ör. Hakan Gedikli"></div>
           <div class="form-2">
             <div class="field"><label for="k-web">Web sitesi</label><input id="k-web" data-kb="web" maxlength="60" value="${esc(d.brand.web)}" placeholder="www.siteniz.com" autocapitalize="off"></div>
             <div class="field"><label for="k-handle">Instagram</label><input id="k-handle" data-kb="handle" maxlength="31" value="${esc(d.brand.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
@@ -777,7 +789,7 @@ async function kPaint() {
     if (!cv || !k.deck.slides.length) return;
     const c = cv.getContext('2d');
     c.save(); c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
-    drawSlide(c, k.deck, Math.min(k.prev, k.deck.slides.length - 1), k.photo);
+    drawSlide(c, k.deck, Math.min(k.prev, k.deck.slides.length - 1), k.photo, k.logo);
     c.restore();
   });
 }
@@ -866,7 +878,7 @@ async function kRender(btn) {
   err.textContent = ''; btn.dataset.confirm = '';
   kOutReset(); k.busy = true; btn.disabled = true; btn.textContent = 'Üretiliyor…';
   try {
-    const res = await renderDeck(k.deck, k.photo, p => { const b = el.querySelector('#k-prog'); if (b) b.style.width = Math.round(p * 100) + '%'; });
+    const res = await renderDeck(k.deck, k.photo, p => { const b = el.querySelector('#k-prog'); if (b) b.style.width = Math.round(p * 100) + '%'; }, k.logo);
     k.out = res.map(r => ({ ...r, url: URL.createObjectURL(r.blob) }));
     toast(`${k.out.length} görsel hazır.`);
   } catch (e) { const x = el.querySelector('#k-error'); if (x) x.textContent = 'Üretilemedi: ' + e.message; }
@@ -932,8 +944,8 @@ function kOpen(id) {
 function kNew() {
   if (s.kar.busy) return;
   kOutReset();
-  const { photo, photoData } = s.kar, brand = s.kar.deck.brand;
-  initKar(); s.kar.photo = photo; s.kar.photoData = photoData;
+  const { photo, photoData, logo, logoData } = s.kar, brand = s.kar.deck.brand;
+  initKar(); Object.assign(s.kar, { photo, photoData, logo, logoData });
   s.kar.deck = sampleDeck(brand);
   draw();
 }
@@ -944,6 +956,16 @@ async function kPhoto(file) {
   try {
     s.kar.photoData = await shrinkPhoto(file);
     s.kar.photo = await imageFromData(s.kar.photoData);
+    kSaveBrand(); kOutReset(); draw();
+  } catch (e) { toast(e.message); }
+}
+
+async function kLogo(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { toast('Bir görsel seç.'); return; }
+  try {
+    s.kar.logoData = await shrinkLogo(file);
+    s.kar.logo = await imageFromData(s.kar.logoData);
     kSaveBrand(); kOutReset(); draw();
   } catch (e) { toast(e.message); }
 }

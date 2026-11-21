@@ -44,6 +44,7 @@ export function normalizeHandleK(v) {
 }
 export function normalizeBrand(b = {}) {
   return {
+    name: oneLine(b.name, 40),
     web: oneLine(b.web, 60).replace(/^https?:\/\//, ''),
     wa: oneLine(b.wa, 120),
     handle: normalizeHandleK(b.handle),
@@ -339,7 +340,7 @@ function bodyBlock(c, text, x, y, w, maxLines = 7, size = 33) {
 }
 function quoteBar(c, text) {
   if (!text) return;
-  const x = 70, y = 1132, w = W - 140, h = 150;
+  const x = 70, y = 1064, w = W - 140, h = 140;
   c.save(); c.fillStyle = 'rgba(8,19,48,.82)'; rr(c, x, y, w, h, 30); c.fill();
   c.lineWidth = 3; c.strokeStyle = goldGrad(c, 0, y, 0, h); rr(c, x, y, w, h, 30); c.stroke(); c.restore();
   const cx = x + 82, cy = y + h / 2;
@@ -397,9 +398,9 @@ function iconCircle(c, cx, cy, r, glyph) {
 }
 
 // Başlık alanı: rozet + başlık + ayırıcı. Döner: içerik başlangıcı y
-function header(c, s, hasPhoto, big = false) {
+function header(c, s, hasPhoto, big = false, top = 52) {
   const left = hasPhoto ? 380 : 80, right = W - 70, cx = (left + right) / 2, w = right - left;
-  let y = badge(c, s.badge, hasPhoto ? cx : W / 2, 52);
+  let y = badge(c, s.badge, hasPhoto ? cx : W / 2, top);
   y += big ? 34 : 26;
   y = rich(c, s.title, { x: cx, y, maxW: w, size: big ? 92 : 80, font: `800 {s}px ${SERIF}`, lh: 1.08, maxLines: 3, minSize: 50 });
   y += 18; divider(c, cx, y, Math.min(w, 620)); y += 30;
@@ -407,15 +408,16 @@ function header(c, s, hasPhoto, big = false) {
 }
 
 // Tek sayfa çiz. photo: HTMLImageElement ya da null
-export function drawSlide(c, deck, i, photo = null) {
+export function drawSlide(c, deck, i, photo = null, logo = null) {
   const s = deck.slides[i];
   c.save(); c.clearRect(0, 0, W, H);
   drawBackground(c, i);
   const hasPhoto = !!(photo && drawPhoto(c, photo));
   drawFrame(c);
   const L = s.layout;
-  let y = header(c, s, hasPhoto, L === 'kapak' || L === 'kapanis');
-  const qTop = s.quote ? 1110 : 1260;
+  const brandTop = drawTopBrand(c, deck.brand, logo, hasPhoto ? (380 + W - 70) / 2 : W / 2);
+  let y = header(c, s, hasPhoto, L === 'kapak' || L === 'kapanis', brandTop);
+  const qTop = s.quote ? 1044 : 1196;
 
   if (L === 'kapak' || L === 'fikir') {
     if (s.ribbon) y = ribbon(c, s.ribbon, W / 2, y, 900) + 30;
@@ -518,6 +520,97 @@ export function drawSlide(c, deck, i, photo = null) {
     });
   }
   quoteBar(c, s.quote);
+  drawFooter(c, deck, i, logo);
+  c.restore();
+}
+
+// Logo + ad yazısı (üst bant). Döner: rozetin başlayacağı y
+function logoMark(c, logo, name, cx, cy, h, gold = true) {
+  const lw = logo ? (logo.naturalWidth || logo.width) / (logo.naturalHeight || logo.height) * h : 0;
+  const parts = String(name || '').toLocaleUpperCase('tr-TR').split(/\s+/).filter(Boolean);
+  const l1 = parts.slice(0, Math.ceil(parts.length / 2)).join(' '), l2 = parts.slice(Math.ceil(parts.length / 2)).join(' ');
+  const fs = Math.round(h * 0.36);
+  c.font = `700 ${fs}px ${SERIF}`;
+  const tw = name ? Math.max(c.measureText(l1).width, c.measureText(l2).width) + (l1.length + 2) * fs * 0.08 : 0;
+  const gap = logo && name ? h * 0.32 : 0;
+  const total = lw + (gap ? gap * 2 + 3 : 0) + tw;
+  let x = cx - total / 2;
+  if (logo) { c.drawImage(logo, x, cy - h / 2, lw, h); x += lw; }
+  if (gap) { x += gap; c.fillStyle = gold ? GOLD : '#fff'; c.fillRect(x, cy - h * 0.38, 3, h * 0.76); x += 3 + gap; }
+  if (name) {
+    c.fillStyle = goldGrad(c, 0, cy - h / 2, 0, h); c.textAlign = 'left'; c.textBaseline = 'middle';
+    c.letterSpacing = `${Math.round(fs * 0.14)}px`;
+    if (l2) { c.fillText(l1, x, cy - fs * 0.58); c.fillText(l2, x, cy + fs * 0.62); } else c.fillText(l1, x, cy);
+    c.letterSpacing = '0px';
+  }
+  return { left: cx - total / 2, right: cx + total / 2 };
+}
+function drawTopBrand(c, b, logo, cx) {
+  if (!logo && !b.name) return 52;
+  const cy = 92, h = 84;
+  const r = logoMark(c, logo, b.name, cx, cy, h);
+  // iki yanda altın çizgiler
+  for (const [a, z] of [[Math.max(60, cx - 420), r.left - 26], [r.right + 26, Math.min(W - 60, cx + 420)]]) {
+    if (z - a < 30) continue;
+    const g = c.createLinearGradient(a, 0, z, 0);
+    const toIn = a < cx;
+    g.addColorStop(0, toIn ? 'rgba(217,174,78,0)' : GOLD); g.addColorStop(1, toIn ? GOLD : 'rgba(217,174,78,0)');
+    c.fillStyle = g; c.fillRect(a, cy - 1.5, z - a, 3);
+  }
+  return cy + h / 2 + 30;
+}
+// Alt bant: logo | web | "Kaydırarak devam et →" (son sayfada hesap adı)
+function drawFooter(c, deck, i, logo) {
+  const b = deck.brand, last = i === deck.slides.length - 1;
+  const y = 1226, h = 76, cy = y + h / 2 + 8;
+  const g = c.createLinearGradient(70, 0, W - 70, 0);
+  g.addColorStop(0, 'rgba(217,174,78,0)'); g.addColorStop(0.5, GOLD); g.addColorStop(1, 'rgba(217,174,78,0)');
+  c.fillStyle = g; c.fillRect(70, y - 8, W - 140, 2.5);
+  const segs = [];
+  if (logo || b.name) segs.push({ kind: 'logo', w: 0 });
+  if (b.web && !last) segs.push({ kind: 'web', w: 0 });
+  if (!last) segs.push({ kind: 'swipe', w: 0 });
+  else if (b.handle) segs.push({ kind: 'handle', w: 0 });
+  if (!segs.length) return;
+  // genişlikleri ölç
+  c.font = `600 26px ${SANS}`;
+  const webW = b.web ? c.measureText(b.web).width + 92 : 0;
+  c.font = `italic 800 30px ${SERIF}`;
+  const swW = c.measureText('Kaydırarak devam et').width + 110;
+  c.font = `italic 700 30px ${SERIF}`;
+  const hdW = b.handle ? c.measureText(b.handle).width + 80 : 0;
+  for (const sg of segs) {
+    if (sg.kind === 'logo') {
+      c.font = `700 22px ${SERIF}`;
+      const parts = String(b.name || '').toLocaleUpperCase('tr-TR').split(/\s+/);
+      const tw = b.name ? Math.max(...[parts.slice(0, Math.ceil(parts.length / 2)).join(' '), parts.slice(Math.ceil(parts.length / 2)).join(' ')].map(t => c.measureText(t).width)) * 1.2 : 0;
+      sg.w = (logo ? (logo.naturalWidth || logo.width) / (logo.naturalHeight || logo.height) * 62 : 0) + (logo && b.name ? 44 : 0) + tw;
+    } else sg.w = { web: webW, swipe: swW, handle: hdW }[sg.kind];
+  }
+  const gapW = 34, total = segs.reduce((a, x) => a + x.w, 0) + gapW * 2 * (segs.length - 1);
+  let scale = Math.min(1, (W - 120) / total);
+  let x = (W - total * scale) / 2;
+  c.save(); c.translate(x, cy); c.scale(scale, scale);
+  let px = 0;
+  segs.forEach((sg, k) => {
+    if (k) { px += gapW; c.fillStyle = GOLD; c.fillRect(px - 1.5, -26, 3, 52); px += gapW; }
+    if (sg.kind === 'logo') { logoMark(c, logo, b.name, px + sg.w / 2, 0, 62); }
+    else if (sg.kind === 'web') {
+      c.lineWidth = 2.5; c.strokeStyle = GOLD; rr(c, px, -27, sg.w, 54, 27); c.stroke();
+      contactIcon(c, 'web', px + 34, 0);
+      c.fillStyle = '#fff'; c.font = `600 26px ${SANS}`; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(b.web, px + 62, 1);
+    } else if (sg.kind === 'swipe' || sg.kind === 'handle') {
+      c.fillStyle = goldGrad(c, 0, -29, 0, 58); rr(c, px, -29, sg.w, 58, 29); c.fill();
+      c.fillStyle = INK; c.textAlign = 'left'; c.textBaseline = 'middle';
+      if (sg.kind === 'swipe') {
+        c.font = `italic 800 30px ${SERIF}`; c.fillText('Kaydırarak devam et', px + 28, 1);
+        const ax = px + sg.w - 62;
+        c.strokeStyle = INK; c.lineWidth = 4.5; c.lineCap = 'round'; c.lineJoin = 'round';
+        c.beginPath(); c.moveTo(ax, 0); c.lineTo(ax + 34, 0); c.moveTo(ax + 22, -12); c.lineTo(ax + 35, 0); c.lineTo(ax + 22, 12); c.stroke();
+      } else { c.font = `italic 700 30px ${SERIF}`; c.textAlign = 'center'; c.fillText(b.handle, px + sg.w / 2, 1); }
+    }
+    px += sg.w;
+  });
   c.restore();
 }
 function contactIcon(c, kind, cx, cy) {
@@ -543,13 +636,13 @@ export async function loadDeckFonts() {
 }
 
 // Tüm sayfaları PNG olarak üret → [{ blob, name }]
-export async function renderDeck(deck, photo = null, onProgress = () => {}) {
+export async function renderDeck(deck, photo = null, onProgress = () => {}, logo = null) {
   await loadDeckFonts();
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
   const out = [];
   for (let i = 0; i < deck.slides.length; i++) {
-    drawSlide(c, deck, i, photo);
+    drawSlide(c, deck, i, photo, logo);
     const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
     out.push({ blob, name: deckFileName(deck.topic || deck.slides[0]?.title, i) });
     onProgress((i + 1) / deck.slides.length);
@@ -567,6 +660,16 @@ export async function shrinkPhoto(file, max = 640) {
     const cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * sc); cv.height = Math.round(img.naturalHeight * sc);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
     return cv.toDataURL('image/jpeg', 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+export async function shrinkLogo(file, max = 360) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const m = new Image(); m.onload = () => res(m); m.onerror = () => rej(new Error('Logo açılamadı.')); m.src = url; });
+    const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * sc); cv.height = Math.round(img.naturalHeight * sc);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/png');
   } finally { URL.revokeObjectURL(url); }
 }
 export function imageFromData(dataUrl) {

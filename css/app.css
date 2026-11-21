@@ -655,3 +655,4 @@ details.hist ol { padding-left: 18px; display: grid; gap: 8px; margin: 10px 0; }
 .kar-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
 .kar-thumbs img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
 @media (max-width: 560px) { .kar-item { grid-template-columns: 1fr auto; } .kar-item input:first-child { grid-column: 1 / -1; } }
+.kar-logo { border-radius: 12px !important; object-fit: contain !important; background: #0E1C3D !important; padding: 6px; }
