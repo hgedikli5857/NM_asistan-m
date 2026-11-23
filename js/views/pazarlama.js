@@ -4,9 +4,10 @@ import { esc, toast, trError, todayISO } from '../ui.js';
 import { PILLARS, pillarLabel, FORMATS, PLATFORMS, POST_STATUS, IDEAS } from '../pazarlama/content.js';
 import { checkMessage } from '../iletisim/uyum.js';
 import { aiChat, aiAvailable, ETHICS, extractJSON } from '../ai/client.js';
-import { TEMPLATES, SCENE_COUNT, REEL_TOTAL, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
+import { TEMPLATES, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
   reelFindings, aiStoryboardPrompt, parseAiStoryboard, suggestCaption, reelSupport, drawReelFrame, previewTime,
-  loadClip, releaseClips, loadReelFonts, renderReel, reelFileName } from '../pazarlama/reels.js';
+  loadClip, releaseClips, loadReelFonts, renderReel, reelFileName, blankStoryboard, parseScript, aiScriptPrompt, parseAiScript,
+  fidelity, reelTotal, REEL_SCHEMA, MIN_SCENES, MAX_SCENES, SEC_MIN, SEC_MAX, SCENE_LEN } from '../pazarlama/reels.js';
 import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
   shrinkPhoto, shrinkLogo, imageFromData } from '../pazarlama/karusel.js';
@@ -316,6 +317,11 @@ function onClick(e) {
     case 'reel-open': reelOpen(id); break;
     case 'reel-new': reelNew(); break;
     case 'reel-clear': reelClearClip(+b.dataset.i); break;
+    case 'reel-mode': reelMode(b.dataset.mode); break;
+    case 'reel-parse': reelParse(); break;
+    case 'reel-ai-src': reelAiSrc(b); break;
+    case 'reel-add': reelSceneOp('add'); break;
+    case 'reel-del': reelSceneOp('del', +b.dataset.i); break;
     case 'kar-prev': s.kar.prev = +b.dataset.i; kMarkPrev(); kPaint(); break;
     case 'kar-ai': kAi(b); break;
     case 'kar-ai-struct': kAi(b, true); break;
@@ -437,25 +443,58 @@ function loadBrand() {
 function saveBrand(sb) {
   try { localStorage.setItem(brandKey(), JSON.stringify({ handle: sb.handle, kw: sb.kw })); } catch { /* özel mod */ }
 }
-function initReel() {
-  s.reel = { sb: defaultStoryboard(loadBrand()), topic: '', postId: null, media: new Array(SCENE_COUNT).fill(null),
-    names: new Array(SCENE_COUNT).fill(''), prev: 0, out: null, busy: false, quality: 1080 };
+function initReel(mode = 'ai') {
+  const brand = loadBrand();
+  const sb = mode === 'metin' ? blankStoryboard(brand) : defaultStoryboard(brand);
+  s.reel = { sb, mode, other: null, note: '', topic: '', postId: null, media: new Array(MAX_SCENES).fill(null),
+    names: new Array(MAX_SCENES).fill(''), prev: 0, out: null, busy: false, quality: 1080 };
+}
+
+const SEC_OPTS = Array.from({ length: (SEC_MAX - SEC_MIN) * 2 + 1 }, (_, i) => SEC_MIN + i / 2);
+const fmtSec = x => String(x).replace('.', ',');
+
+function sourceHtml(r) {
+  if (r.mode === 'ai') {
+    return `<div class="field"><label for="r-topic">Konu</label>
+        <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. İşimin yanında akşamlarım"></div>
+      ${s.ai ? `<button type="button" class="btn btn-ghost" data-act="reel-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile senaryo yaz</button>`
+        : '<p class="small muted">AI asistan bu hesapta kapalı; senaryoyu aşağıdaki kutulara kendin yazabilir ya da "Benim metnim" modunu kullanabilirsin.</p>'}`;
+  }
+  return `<div class="field"><label for="r-topic">Başlık (takvimde görünür)</label>
+      <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. Sabah rutinim"></div>
+    <div class="field"><label for="r-src">Senaryo metnin</label>
+      <textarea id="r-src" data-reel="src" rows="9" maxlength="4000" placeholder="Her sahneyi boş bir satırla ayır.&#10;Sahnenin ilk satırı büyük başlık, sonrakiler alt yazı olur.&#10;&#10;Mesaim bitiyor.&#10;Asıl işimin yanında girişimciliğe zaman ayırıyorum.&#10;&#10;Slogan: Küçük ama istikrarlı adımlar&#10;CTA: Merak ediyorsan yorumlara yaz:">${esc(r.sb.src)}</textarea></div>
+    <details class="small muted"><summary>Metni nasıl yazmalıyım?</summary>
+      <ul>
+        <li>Sahneleri <b>boş satırla</b>, <b>---</b> ile ya da <b>Sahne 1:</b> başlıklarıyla ayır (en fazla ${MAX_SCENES} sahne).</li>
+        <li>Sahnenin ilk kısa satırı büyük başlık, kalanı alt yazı olur. Uzun tek cümle doğrudan alt yazıya gider.</li>
+        <li><b>Slogan:</b> ve <b>CTA:</b> ile başlayan satırlar kapanışa yerleşir.</li>
+        <li>Kelimelerin değiştirilmez; her sahnenin süresi okuma hızına göre ayarlanır, istersen sonra değiştirirsin.</li>
+      </ul></details>
+    <div class="quick">
+      <button type="button" class="btn btn-primary" data-act="reel-parse"><i class="ti ti-layout-rows" aria-hidden="true"></i> Sahnelere böl</button>
+      ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="reel-ai-src"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile böl (metne sadık)</button>' : ''}
+    </div>
+    ${r.note ? `<div class="check-box ${r.noteWarn ? 'warn' : 'ok'}" style="margin-top:10px"><p>${esc(r.note)}</p></div>` : ''}`;
 }
 
 function viewReels() {
   const r = s.reel, sb = r.sb, sup = reelSupport(window);
   const saved = s.posts.filter(p => p.storyboard).slice(-6).reverse();
   const tpl = TEMPLATES[sb.template];
+  const N = sb.scenes.length;
   return `
     ${sup.ok ? '' : `<div class="check-box warn"><p><strong>Bu tarayıcı video üretemiyor.</strong> Telefonunuzda Chrome'un güncel sürümüyle açın.</p></div>`}
     ${sup.ok && !sup.mp4 ? `<div class="check-box warn"><p>Bu tarayıcı yalnızca WebM üretebiliyor; Instagram kabul etmeyebilir. Chrome'un güncel sürümünü deneyin.</p></div>` : ''}
     <div class="compose reel-compose">
       <section class="card reel-form">
         <h2><i class="ti ti-movie" aria-hidden="true"></i> ${r.postId ? 'Reels senaryosu (takvimden)' : 'Yeni Reels'}</h2>
-        <p class="small muted">Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)} Kutularda 1. satır beyaz, 2. satır altın yazılır.</p>
-        <div class="field"><label for="r-topic">Konu</label>
-          <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. İşimin yanında akşamlarım"></div>
-        ${s.ai ? `<button type="button" class="btn btn-ghost" data-act="reel-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile senaryo yaz</button>` : ''}
+        <div class="seg" role="tablist" aria-label="Senaryo kaynağı">
+          <button role="tab" data-act="reel-mode" data-mode="ai" aria-selected="${r.mode === 'ai'}"><i class="ti ti-sparkles" aria-hidden="true"></i> AI asistan</button>
+          <button role="tab" data-act="reel-mode" data-mode="metin" aria-selected="${r.mode === 'metin'}"><i class="ti ti-file-text" aria-hidden="true"></i> Benim metnim</button>
+        </div>
+        <p class="small muted">${r.mode === 'ai' ? `Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)}` : 'Kendi senaryonu yapıştır; uygulama sahnelere böler, kelimelerine dokunmaz.'} Kutularda 1. satır beyaz, sonrakiler altın yazılır.</p>
+        ${sourceHtml(r)}
         <details class="reel-brand"${sb.handle ? '' : ' open'}><summary>Marka ayarları</summary>
           <div class="form-2">
             <div class="field"><label for="r-handle">Hesap adı</label><input id="r-handle" data-reel="handle" maxlength="31" value="${esc(sb.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
@@ -465,8 +504,13 @@ function viewReels() {
         </details>
         ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
           <legend>Sahne ${i + 1}</legend>
+          <div class="reel-scene-tools">
+            <label class="small" for="r-sec-${i}">Süre</label>
+            <select id="r-sec-${i}" data-reel="sec" data-i="${i}">${SEC_OPTS.map(x => `<option value="${x}" ${x === sc.sec ? 'selected' : ''}>${fmtSec(x)} sn</option>`).join('')}</select>
+            ${N > MIN_SCENES ? `<button type="button" class="icon-btn" data-act="reel-del" data-i="${i}" aria-label="Sahne ${i + 1}'i sil"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ''}
+          </div>
           <div class="field"><label for="r-top-${i}">Başlık</label><textarea id="r-top-${i}" data-reel="top" data-i="${i}" rows="2" maxlength="60">${esc(sc.top)}</textarea></div>
-          <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="2" maxlength="70">${esc(sc.bot)}</textarea></div>
+          <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="${sc.bot.length > 70 ? 3 : 2}" maxlength="140">${esc(sc.bot)}</textarea></div>
           <div class="reel-clip">
             <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-video-plus" aria-hidden="true"></i> Klip seç</label>
             <input type="file" id="r-file-${i}" data-clip="${i}" accept="video/*,image/*" class="sr-only">
@@ -474,8 +518,9 @@ function viewReels() {
             ${r.media[i] ? `<button type="button" class="icon-btn" data-act="reel-clear" data-i="${i}" aria-label="Sahne ${i + 1} klibini kaldır"><i class="ti ti-x" aria-hidden="true"></i></button>` : ''}
           </div>
         </fieldset>`).join('')}
+        ${N < MAX_SCENES ? `<button type="button" class="btn btn-ghost" data-act="reel-add"><i class="ti ti-plus" aria-hidden="true"></i> Sahne ekle</button>` : ''}
         <fieldset class="reel-scene"><legend>Kapanış</legend>
-          <div class="field"><label for="r-slogan">Slogan</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
+          <div class="field"><label for="r-slogan">Slogan${r.mode === 'metin' ? ' (boş bırakılırsa gösterilmez)' : ''}</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
           <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>
         </fieldset>
         <div id="r-check"></div>
@@ -484,12 +529,12 @@ function viewReels() {
         <h2><i class="ti ti-device-mobile" aria-hidden="true"></i> Önizleme</h2>
         <div class="reel-stage"><canvas id="r-canvas" width="540" height="960" aria-label="Video önizlemesi"></canvas></div>
         <div class="chips reel-prev-chips" role="group" aria-label="Önizlenecek sahne">
-          ${[...sb.scenes.map((_, i) => `${i + 1}`), 'Slogan', 'Kapanış'].map((l, i) => `<button class="chip" data-act="reel-prev" data-i="${i}" aria-pressed="${r.prev === i}">${l}</button>`).join('')}
+          ${[...sb.scenes.map((_, i) => [i, `${i + 1}`]), ...(sb.slogan ? [[N, 'Slogan']] : []), [N + 1, 'Kapanış']].map(([i, l]) => `<button class="chip" data-act="reel-prev" data-i="${i}" aria-pressed="${r.prev === i}">${l}</button>`).join('')}
         </div>
         <div class="field"><label for="r-quality">Kalite</label>
           <select id="r-quality" data-reel="quality"><option value="1080" ${r.quality === 1080 ? 'selected' : ''}>1080 × 1920 (önerilen)</option><option value="720" ${r.quality === 720 ? 'selected' : ''}>720 × 1280 (eski telefonlar)</option></select></div>
         <div class="reel-bar" aria-hidden="true"><span id="r-prog"></span></div>
-        <p class="small muted" id="r-status" role="status">${r.busy ? 'Üretiliyor…' : `Video ${Math.round(REEL_TOTAL)} sn sürer; üretim sırasında ekranı açık tutun.`}</p>
+        <p class="small muted" id="r-status" role="status">${r.busy ? 'Üretiliyor…' : `Video ${fmtSec(Math.round(reelTotal(sb) * 2) / 2)} sn sürer (${N} sahne); üretim sırasında ekranı açık tutun.`}</p>
         <button type="button" class="btn btn-gold reel-go" data-act="reel-render" ${sup.ok && !r.busy ? '' : 'disabled'}><i class="ti ti-player-record" aria-hidden="true"></i> Videoyu üret</button>
         <div id="r-out">${reelOutHtml()}</div>
         <div class="quick" style="margin-top:12px">
@@ -531,7 +576,7 @@ async function paintPreview() {
     if (!cv || s.reel.busy) return;
     const i = s.reel.prev;
     // Önizlemede her sahnenin kendi klibi, o sahnenin anında gösterilir
-    drawReelFrame(cv.getContext('2d'), cv.width, cv.height, previewTime(i), s.reel.media, s.reel.sb);
+    drawReelFrame(cv.getContext('2d'), cv.width, cv.height, previewTime(i, s.reel.sb), s.reel.media, s.reel.sb);
   });
 }
 function markPrev() {
@@ -551,12 +596,17 @@ function onReelInput(t) {
   const r = s.reel, k = t.dataset.reel, i = +t.dataset.i;
   if (k === 'topic') { r.topic = t.value; return; }
   if (k === 'quality') { r.quality = +t.value; return; }
+  if (k === 'src') { r.sb = { ...r.sb, src: t.value.slice(0, 4000) }; return; }
+  const N = r.sb.scenes.length;
   const raw = { ...r.sb, scenes: r.sb.scenes.map(x => ({ ...x })) };
-  if (k === 'top' || k === 'bot') { raw.scenes[i][k] = t.value; r.prev = i; markPrev(); }
+  if (k === 'top' || k === 'bot' || k === 'sec') { raw.scenes[i][k] = k === 'sec' ? +t.value : t.value; r.prev = i; markPrev(); }
   else raw[k] = t.value;
-  if (k === 'slogan') { r.prev = SCENE_COUNT; markPrev(); }
-  if (k === 'cta' || k === 'kw' || k === 'handle') { r.prev = SCENE_COUNT + 1; markPrev(); }
+  const hadSlogan = !!r.sb.slogan;
+  if (k === 'slogan') { r.prev = N; markPrev(); }
+  if (k === 'cta' || k === 'kw' || k === 'handle') { r.prev = N + 1; markPrev(); }
   r.sb = normalizeStoryboard(raw);
+  if (k === 'sec') { const st = el.querySelector('#r-status'); if (st && !r.busy) st.textContent = `Video ${fmtSec(Math.round(reelTotal(r.sb) * 2) / 2)} sn sürer (${N} sahne); üretim sırasında ekranı açık tutun.`; }
+  if (k === 'slogan' && hadSlogan !== !!r.sb.slogan) { draw(); el.querySelector('#r-slogan')?.focus(); return; }
   if (k === 'handle' || k === 'kw') saveBrand(r.sb);
   updateReelCheck(); paintPreview();
 }
@@ -667,6 +717,7 @@ function reelOpen(id) {
   const dlg = el.querySelector('#p-dialog'); if (dlg?.open) dlg.close();
   if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
   s.reel.sb = normalizeStoryboard(p.storyboard); s.reel.topic = p.topic; s.reel.postId = p.id; s.reel.out = null; s.reel.prev = 0;
+  s.reel.mode = s.reel.sb.mode; s.reel.other = null; s.reel.note = '';
   s.tab = 'reels'; history.replaceState(null, '', '#/pazarlama?tab=reels'); draw();
 }
 
@@ -674,8 +725,75 @@ function reelNew() {
   if (s.reel.busy) return;
   releaseClips(s.reel.media);
   if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
-  const q = s.reel.quality;
-  initReel(); s.reel.quality = q; draw();
+  const q = s.reel.quality, mode = s.reel.mode;
+  initReel(mode); s.reel.quality = q; draw();
+}
+
+// Mod değişince öbür moddaki senaryo saklanır; geri dönünce kaldığı yerden devam
+function reelMode(mode) {
+  const r = s.reel;
+  if (r.busy || mode === r.mode) return;
+  const keep = r.sb;
+  const brand = { kw: keep.kw, handle: keep.handle };
+  r.sb = r.other && r.other.mode === mode ? r.other : (mode === 'metin' ? blankStoryboard(brand) : defaultStoryboard(brand));
+  r.sb = normalizeStoryboard({ ...r.sb, kw: keep.kw, handle: keep.handle });
+  r.other = keep; r.mode = mode; r.prev = 0; r.note = '';
+  draw();
+}
+
+function reelApply(sb, note, warn = false) {
+  const r = s.reel;
+  r.sb = sb; r.prev = 0; r.note = note; r.noteWarn = warn;
+  if (r.out) { URL.revokeObjectURL(r.out.url); r.out = null; }
+  draw();
+}
+
+function reelParse() {
+  const r = s.reel, src = (el.querySelector('#r-src')?.value || r.sb.src || '').trim();
+  const err = el.querySelector('#r-error');
+  if (src.length < 3) { err.textContent = 'Önce senaryo metnini yaz ya da yapıştır.'; el.querySelector('#r-src')?.focus(); return; }
+  err.textContent = '';
+  const p = parseScript(src);
+  const sb = normalizeStoryboard({ ...r.sb, v: REEL_SCHEMA, mode: 'metin', src, scenes: p.scenes, slogan: p.slogan, cta: p.cta || r.sb.cta });
+  if (!r.topic) r.topic = (p.scenes[0].top || p.scenes[0].bot).replace(/\n/g, ' ').slice(0, 80);
+  reelApply(sb, `${sb.scenes.length} sahne hazır · video ${fmtSec(Math.round(reelTotal(sb) * 2) / 2)} sn.${p.warnings.length ? ' ' + p.warnings.join(' ') : ' Kutulardan düzeltebilir, süreleri değiştirebilirsin.'}`, p.warnings.length > 0);
+}
+
+async function reelAiSrc(btn) {
+  const r = s.reel, src = (el.querySelector('#r-src')?.value || r.sb.src || '').trim();
+  const err = el.querySelector('#r-error');
+  if (src.length < 3) { err.textContent = 'Önce senaryo metnini yaz ya da yapıştır.'; return; }
+  err.textContent = '';
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Bölünüyor…';
+  try {
+    const text = await aiChat({ maxTokens: 1400, messages: [{ role: 'user', content: aiScriptPrompt(src) }] });
+    const sb = parseAiScript(extractJSON(text), { ...r.sb, src }, src);
+    const f = fidelity(src, sb);
+    if (!r.topic) r.topic = (sb.scenes[0].top || sb.scenes[0].bot).replace(/\n/g, ' ').slice(0, 80);
+    reelApply(sb, f < 0.9
+      ? `Dikkat: AI metnindeki kelimelerin yaklaşık %${Math.round((1 - f) * 100)}'ini değiştirmiş olabilir. Kutuları kontrol et ya da "Sahnelere böl"ü kullan.`
+      : `${sb.scenes.length} sahne hazır · metnine sadık kalındı · video ${fmtSec(Math.round(reelTotal(sb) * 2) / 2)} sn.`, f < 0.9);
+  } catch (e) {
+    err.textContent = 'AI: ' + e.message;
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+function reelSceneOp(op, i) {
+  const r = s.reel, scenes = r.sb.scenes.map(x => ({ ...x }));
+  if (op === 'add' && scenes.length < MAX_SCENES) {
+    scenes.push({ top: '', bot: '', sec: SCENE_LEN });
+    r.prev = scenes.length - 1;
+  }
+  if (op === 'del' && scenes.length > MIN_SCENES) {
+    scenes.splice(i, 1);
+    releaseClips([r.media[i]]);
+    r.media.splice(i, 1); r.media.push(null);
+    r.names.splice(i, 1); r.names.push('');
+    r.prev = Math.min(r.prev, scenes.length - 1);
+  }
+  r.sb = normalizeStoryboard({ ...r.sb, v: REEL_SCHEMA, scenes });
+  draw();
 }
 
 // ====================================================================

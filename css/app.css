@@ -780,3 +780,8 @@ button.aj-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
   .k-takip { --kb: #16372A; } .k-gorev { --kb: #252B38; --k: #C9D3EE; } .k-icerik { --kb: #3A2E1A; }
   .m-cell.out { background: rgba(255,255,255,.02); }
 }
+
+/* Reels: sahne araçları */
+.reel-compose .seg { margin: 6px 0 10px; }
+.reel-scene-tools { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin: -4px 0 6px; }
+.reel-scene-tools select { width: auto; min-width: 92px; padding: 6px 8px; }

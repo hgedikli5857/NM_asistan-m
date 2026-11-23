@@ -2,13 +2,15 @@
 // Sunucu yok; video kullanıcının telefonunda üretilir ve orada kalır. Saf fonksiyonlar Node testlerinde de çalışır.
 import { checkMessage } from '../iletisim/uyum.js';
 
-export const REEL_SCHEMA = 1;
-export const SCENE_COUNT = 4;
-export const SCENE_LEN = 4.0;   // her sahne (sn)
+export const REEL_SCHEMA = 2;   // 2: sahne sayısı (2–8) ve sahne süresi esnek
+export const SCENE_COUNT = 4;   // varsayılan sahne sayısı (şablon)
+export const MIN_SCENES = 2, MAX_SCENES = 8;
+export const SEC_MIN = 2.5, SEC_MAX = 8;
+export const SCENE_LEN = 4.0;   // varsayılan sahne süresi (sn)
 export const XF = 0.3;          // sahne geçişi (sn)
 export const SLOGAN_LEN = 3.0;
 export const CTA_LEN = 3.5;
-export const REEL_TOTAL = SCENE_COUNT * SCENE_LEN + SLOGAN_LEN + CTA_LEN; // 22,5 sn
+export const REEL_TOTAL = SCENE_COUNT * SCENE_LEN + SLOGAN_LEN + CTA_LEN; // varsayılan şablon: 22,5 sn
 
 export const TEMPLATES = {
   mesai: {
@@ -26,8 +28,10 @@ export const TEMPLATES = {
 };
 
 const clip = (v, n) => String(v ?? '').replace(/\r/g, '').slice(0, n);
-// En fazla 2 satır: 1. satır beyaz, 2. satır altın
-const twoLines = (v, n) => clip(v, n).split('\n').map(x => x.trim()).filter(Boolean).slice(0, 2).join('\n');
+// En fazla N satır: 1. satır beyaz, sonrakiler altın
+const nLines = (v, n, max) => clip(v, n).split('\n').map(x => x.trim()).filter(Boolean).slice(0, max).join('\n');
+const twoLines = (v, n) => nLines(v, n, 2);
+const secOf = v => { const x = Number(v); return Number.isFinite(x) && x > 0 ? Math.min(SEC_MAX, Math.max(SEC_MIN, Math.round(x * 2) / 2)) : SCENE_LEN; };
 
 export function normalizeHandle(v) {
   const h = String(v || '').trim().replace(/\s+/g, '').replace(/^@*/, '');
@@ -41,26 +45,128 @@ export function normalizeKeyword(v) {
 export function defaultStoryboard(brand = {}, template = 'mesai') {
   const t = TEMPLATES[template] || TEMPLATES.mesai;
   return normalizeStoryboard({
-    template, scenes: t.scenes, slogan: t.slogan, cta: t.cta,
+    v: REEL_SCHEMA, template, scenes: t.scenes, slogan: t.slogan, cta: t.cta,
     kw: brand.kw, handle: brand.handle
   });
+}
+
+// Kendi metin modu için boş başlangıç
+export function blankStoryboard(brand = {}) {
+  return normalizeStoryboard({ v: REEL_SCHEMA, mode: 'metin', scenes: [{}, {}, {}], slogan: '', kw: brand.kw, handle: brand.handle });
 }
 
 // Veritabanından ya da AI'dan gelen her şeyi güvenli, sabit biçime çevir (şema sürümüyle)
 export function normalizeStoryboard(raw = {}) {
   const t = TEMPLATES[raw.template] ? raw.template : 'mesai';
   const base = TEMPLATES[t];
-  const scenes = Array.from({ length: SCENE_COUNT }, (_, i) => {
-    const s = (Array.isArray(raw.scenes) && raw.scenes[i]) || {};
-    return { top: twoLines(s.top ?? base.scenes[i].top, 60), bot: twoLines(s.bot ?? base.scenes[i].bot, 70) };
+  const list = Array.isArray(raw.scenes) ? raw.scenes : [];
+  // Şema 1 (eski kayıtlar) hep 4 sahnedir; şema 2'de 2–8 sahne
+  const n = raw.v >= 2 ? Math.min(MAX_SCENES, Math.max(MIN_SCENES, list.length || SCENE_COUNT)) : SCENE_COUNT;
+  const own = raw.mode === 'metin';
+  const scenes = Array.from({ length: n }, (_, i) => {
+    const s = list[i] || {};
+    const b = own ? { top: '', bot: '' } : (base.scenes[i] || { top: '', bot: '' });
+    return { top: twoLines(s.top ?? b.top, 60), bot: nLines(s.bot ?? b.bot, 140, 4), sec: secOf(s.sec) };
   });
   return {
-    v: REEL_SCHEMA, template: t, scenes,
-    slogan: twoLines(raw.slogan ?? base.slogan, 60),
+    v: REEL_SCHEMA, template: t, mode: own ? 'metin' : 'ai', scenes,
+    slogan: twoLines(raw.slogan ?? (own ? '' : base.slogan), 60),
     cta: clip(raw.cta ?? base.cta, 90).replace(/\n+/g, ' ').trim(),
     kw: normalizeKeyword(raw.kw),
-    handle: normalizeHandle(raw.handle)
+    handle: normalizeHandle(raw.handle),
+    src: own ? clip(raw.src, 4000) : ''
   };
+}
+
+// Zaman çizelgesi: sahnelerin başlangıçları, klip bölümünün sonu, slogan ve toplam süre
+export function timeline(sb) {
+  const starts = []; let t = 0;
+  for (const sc of sb.scenes) { starts.push(t); t += secOf(sc.sec); }
+  const slogan = sb.slogan ? SLOGAN_LEN : 0;
+  return { starts, clipEnd: t, slogan, total: t + slogan + CTA_LEN, sec: i => secOf(sb.scenes[i] && sb.scenes[i].sec) };
+}
+export const reelTotal = sb => timeline(sb).total;
+
+// ====================================================================
+// Kendi metnin → sahneler. Kelimelere dokunmaz; yalnızca böler ve satırlara yerleştirir.
+const WORDS = t => String(t || '').trim().split(/\s+/).filter(Boolean);
+// Kısa metni en fazla 2 satıra, satır başı ~22 karaktere böl (sığmazsa null)
+export function wrapTwo(text, max = 22) {
+  const lines = wrapWords(x => x.length, text, max);
+  return lines.length <= 2 && lines.every(l => l.length <= max + 6) ? lines.join('\n') : null;
+}
+// Okuma süresine göre sahne süresi: saniyede ~2,6 kelime + 1,2 sn pay
+export const readSec = text => secOf(Math.max(3, WORDS(text).length / 2.6 + 1.2));
+
+export function parseScript(text, { max = MAX_SCENES } = {}) {
+  const warnings = [];
+  let body = String(text || '').replace(/\r/g, '').trim();
+  let slogan = '', cta = '';
+  body = body.split('\n').filter(line => {
+    const m = line.match(/^\s*(slogan|cta|çağrı|kapanış)\s*[:：]\s*(.*)$/i);
+    if (!m) return true;
+    if (/^slogan$/i.test(m[1])) slogan = m[2].trim(); else cta = m[2].trim();
+    return false;
+  }).join('\n').trim();
+  // Bloklar: boş satır, --- ya da "Sahne 3:" başlıkları
+  let blocks = body.split(/\n\s*\n|\n\s*-{3,}\s*\n|\n(?=\s*sahne\s*\d+\s*[:.)-])/i)
+    .map(b => b.replace(/^\s*-{3,}\s*$/gm, '').replace(/^\s*sahne\s*\d+\s*[:.)-]\s*/i, '').trim()).filter(Boolean);
+  // Tek blok: satır satır; tek satırsa cümle cümle böl
+  if (blocks.length === 1) {
+    const lines = blocks[0].split('\n').map(x => x.trim()).filter(Boolean);
+    blocks = lines.length > 1 ? lines : (blocks[0].match(/[^.!?…]+[.!?…]*/g) || [blocks[0]]).map(x => x.trim()).filter(Boolean);
+  }
+  if (blocks.length > max) {
+    // Fazlası birleştirilir; kelime kaybolmaz
+    const per = Math.ceil(blocks.length / max), merged = [];
+    for (let i = 0; i < blocks.length; i += per) merged.push(blocks.slice(i, i + per).join(' '));
+    warnings.push(`${blocks.length} parça vardı; ${merged.length} sahneye birleştirildi.`);
+    blocks = merged;
+  }
+  const scenes = blocks.map(b => {
+    const lines = b.split('\n').map(x => x.trim()).filter(Boolean);
+    let top = '', bot = '';
+    if (lines.length >= 2) {
+      const t2 = lines[0].length <= 44 ? wrapTwo(lines[0]) : null;
+      if (t2) { top = t2; bot = lines.slice(1).join(' '); } else bot = lines.join(' ');
+    } else {
+      const t2 = lines[0].length <= 40 ? wrapTwo(lines[0]) : null;
+      if (t2) top = t2; else bot = lines[0];
+    }
+    if (bot.length > 140) warnings.push(`"${bot.slice(0, 30)}…" çok uzun; videoda kısaltılır. Bu sahneyi ikiye böl.`);
+    return { top, bot: bot.slice(0, 140), sec: readSec(`${top} ${bot}`) };
+  });
+  if (scenes.length < MIN_SCENES) warnings.push('Metin kısa; en az 2 sahne gerekir, boş sahneyi doldur.');
+  while (scenes.length < MIN_SCENES) scenes.push({ top: '', bot: '', sec: SCENE_LEN });
+  return { scenes, slogan, cta, warnings };
+}
+
+// Metne sadakat: çıktıdaki kelimelerin kaynakta geçme oranı (AI düzenlemesini denetlemek için)
+export function fidelity(src, sb) {
+  const norm = w => w.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]/gu, '');
+  const have = new Set(WORDS(src).map(norm).filter(Boolean));
+  const out = WORDS([...sb.scenes.flatMap(x => [x.top, x.bot]), sb.slogan].join(' ')).map(norm).filter(Boolean);
+  if (!out.length) return 1;
+  return out.filter(w => have.has(w)).length / out.length;
+}
+
+export function aiScriptPrompt(text) {
+  return `Aşağıdaki Reels metnini kısa video sahnelerine böl. METNE SADIK KAL: kelime ekleme, çıkarma, değiştirme; yalnızca sahnelere ve satırlara böl.
+Kurallar:
+- ${MIN_SCENES}-${MAX_SCENES} sahne. Her sahne: "top" = kısa vurgulu başlık (en fazla 2 satır, satır başı ~20 karakter), "bot" = alt yazı (en fazla 3 satır, toplam 120 karakter). Satırları \\n ile ayır. Başlığa uygun kısa ifade yoksa "top" boş kalabilir.
+- "sec" = sahnenin ekranda kalma süresi (okuma hızına göre 3-7 sn).
+- Metinde açıkça slogan ya da kapanış/çağrı cümlesi varsa "slogan" ve "cta" alanlarına koy; yoksa boş bırak.
+- Metindeki hiçbir cümleyi atlama.
+METİN BAŞI
+${String(text).slice(0, 3500)}
+METİN SONU
+Sadece şu biçimde JSON döndür:
+{"scenes":[{"top":"...","bot":"...","sec":4}],"slogan":"","cta":""}`;
+}
+export function parseAiScript(j, current, src) {
+  if (!j || !Array.isArray(j.scenes) || j.scenes.length < MIN_SCENES) throw new Error('AI sahneleri eksik geldi; tekrar deneyin ya da "Sahnelere böl"ü kullanın.');
+  return normalizeStoryboard({ ...current, v: REEL_SCHEMA, mode: 'metin', src, scenes: j.scenes,
+    slogan: j.slogan || '', cta: j.cta || current.cta });
 }
 
 // Videoda görünen bütün metinler (uyum kontrolü için)
@@ -89,14 +195,15 @@ Sadece şu biçimde JSON döndür:
 // j: AI yanıtından çıkarılmış JSON nesnesi (extractJSON ile)
 export function parseAiStoryboard(j, current) {
   if (!j || !Array.isArray(j.scenes) || j.scenes.length < SCENE_COUNT) throw new Error('AI senaryosu eksik geldi, tekrar deneyin.');
-  return normalizeStoryboard({ ...current, scenes: j.scenes, slogan: j.slogan, cta: j.cta });
+  return normalizeStoryboard({ ...current, v: REEL_SCHEMA, mode: 'ai', src: '', scenes: j.scenes.slice(0, SCENE_COUNT).map(x => ({ ...x, sec: SCENE_LEN })), slogan: j.slogan, cta: j.cta });
 }
 
 // Paylaşım metni önerisi (caption)
 export function suggestCaption(sb, topic = '') {
   const flat = s => s.replace(/\n/g, ' ');
-  const lines = [flat(sb.scenes[0].top) + ' ' + flat(sb.scenes[0].bot) + '.',
-    flat(sb.slogan), `${flat(sb.cta).replace(/:$/, '')} ${sb.kw}`];
+  const first = `${flat(sb.scenes[0].top)} ${flat(sb.scenes[0].bot)}`.trim();
+  const lines = [first ? (/[.!?…]$/.test(first) ? first : first + '.') : '',
+    flat(sb.slogan), `${flat(sb.cta).replace(/:$/, '')} ${sb.kw}`].filter(Boolean);
   return (topic ? topic + '\n\n' : '') + lines.join('\n');
 }
 
@@ -134,8 +241,8 @@ function drawBg(c, W, H) {
   g.addColorStop(0, '#24375f'); g.addColorStop(0.5, NAVY); g.addColorStop(1, DEEP);
   c.fillStyle = g; c.fillRect(0, 0, W, H);
 }
-function drawDots(c, W, H, t, k) {
-  const p = t / REEL_TOTAL;
+function drawDots(c, W, H, t, k, total = REEL_TOTAL) {
+  const p = t / total;
   c.fillStyle = GOLD; c.shadowColor = 'rgba(201,162,74,.6)'; c.shadowBlur = 10 * k;
   for (const d of DOTS) {
     c.globalAlpha = d.a * Math.min(1, p * 4);
@@ -180,6 +287,24 @@ function fitText(c, s, cx, y, color, size, weight, k) {
   c.fillStyle = color; c.fillText(s, cx, y + (size - sz) / 2);
   if (sz !== size) c.font = `${weight} ${size}px ${REEL_FONT}`;
 }
+// Alt yazı: açık satırlar korunur, uzunlar sarılır; ilk satır beyaz, sonrakiler altın. Çok satırda yazı küçülür.
+function subBlock(c, text, cx, y, size, weight, alpha, dy, k) {
+  if (alpha <= 0 || !text) return;
+  const layout = sz => {
+    c.font = `${weight} ${sz}px ${REEL_FONT}`;
+    const parts = text.split('\n').map((l, i) => ({ lines: wrapWords(s => c.measureText(s).width, l, 960 * k), gold: i > 0 }));
+    return { parts, n: parts.reduce((a, p) => a + p.lines.length, 0) };
+  };
+  let sz = size, L = layout(sz);
+  if (L.n > 3) { sz = size * (L.n > 4 ? 0.74 : 0.86); L = layout(sz); }
+  const lh = sz * 1.28, top = y + dy - Math.max(0, L.n - 2) * lh * 0.5;
+  c.globalAlpha = alpha; c.textAlign = 'center'; c.textBaseline = 'top';
+  c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 22 * k;
+  let row = 0;
+  for (const p of L.parts) for (const l of p.lines) { if (row >= 6) break; c.fillStyle = p.gold ? GOLD : '#fff'; c.fillText(l, cx, top + row++ * lh); }
+  c.shadowBlur = 0; c.globalAlpha = 1;
+}
+
 export function wrapWords(measure, text, maxW) {
   const out = []; let line = '';
   for (const w of String(text).split(/\s+/).filter(Boolean)) {
@@ -197,18 +322,18 @@ function roundRect(c, x, y, w, h, r) {
 // Belirli bir andaki (t sn) kareyi çiz. media[i]: video/görsel öğesi ya da null (örnek arka plan)
 export function drawReelFrame(c, W, H, t, media, sb) {
   const k = W / 1080;
+  const tl = timeline(sb), N = sb.scenes.length, clipEnd = tl.clipEnd, TOTAL = tl.total, SL = tl.slogan;
   drawBg(c, W, H);
-  const clipEnd = SCENE_COUNT * SCENE_LEN;
   if (t < clipEnd + XF) {
-    for (let i = 0; i < SCENE_COUNT; i++) {
-      const s0 = i * SCENE_LEN;
-      if (t < s0 || t > s0 + SCENE_LEN + XF) continue;
+    for (let i = 0; i < N; i++) {
+      const s0 = tl.starts[i], len = tl.sec(i);
+      if (t < s0 || t > s0 + len + XF) continue;
       const lt = t - s0;
       let a = i === 0 ? easeOut(lt / 0.5) : Math.min(1, lt / XF);
-      if (t > s0 + SCENE_LEN) a *= 1 - (t - s0 - SCENE_LEN) / XF;
+      if (t > s0 + len) a *= 1 - (t - s0 - len) / XF;
       c.globalAlpha = Math.max(0, a);
       const m = media[i];
-      if (!(m && drawCover(c, m, W, H, 1 + 0.06 * (lt / (SCENE_LEN + XF))))) drawDemo(c, W, H, i, lt);
+      if (!(m && drawCover(c, m, W, H, 1 + 0.06 * (lt / (len + XF))))) drawDemo(c, W, H, i, lt);
       c.globalAlpha = 1;
     }
     const sa = t < 0.45 ? t / 0.4 : t > clipEnd - 0.05 ? Math.max(0, 1 - (t - clipEnd + 0.05) / 0.35) : 1;
@@ -216,25 +341,25 @@ export function drawReelFrame(c, W, H, t, media, sb) {
     c.strokeStyle = 'rgba(201,162,74,.85)'; c.lineWidth = 20 * k; c.strokeRect(0, 0, W, H);
     c.globalAlpha = 1;
   }
-  drawDots(c, W, H, t, k);
-  for (let i = 0; i < SCENE_COUNT; i++) {
-    const lt = t - i * SCENE_LEN;
-    if (lt < 0 || lt > SCENE_LEN) continue;
-    const out = lt > 3.7 ? (lt - 3.7) / 0.3 : 0;
-    const ta = backOut((lt - 0.2) / 0.45), ba = easeOut((lt - 0.55) / 0.4);
+  drawDots(c, W, H, t, k, TOTAL);
+  for (let i = 0; i < N; i++) {
+    const lt = t - tl.starts[i], len = tl.sec(i);
+    if (lt < 0 || lt > len) continue;
+    const out = lt > len - 0.3 ? (lt - len + 0.3) / 0.3 : 0;
+    const ta = backOut((lt - 0.2) / 0.45), ba = easeOut((lt - (sb.scenes[i].top ? 0.55 : 0.2)) / 0.4);
     textBlock(c, sb.scenes[i].top, W / 2, 230 * k, 92 * k, 800, 1.12, clamp01((lt - 0.2) / 0.3) * (1 - out), (1 - ta) * 40 * k - out * 20 * k, k);
-    textBlock(c, sb.scenes[i].bot, W / 2, 1400 * k, 54 * k, 700, 1.3, Math.max(0, ba) * (1 - out), (1 - ba) * 24 * k - out * 20 * k, k);
+    subBlock(c, sb.scenes[i].bot, W / 2, 1400 * k, 54 * k, 700, Math.max(0, ba) * (1 - out), (1 - ba) * 24 * k - out * 20 * k, k);
   }
   const slt = t - (clipEnd + 0.35);
-  if (slt > 0 && t < clipEnd + SLOGAN_LEN + 0.3) {
-    const out = t > clipEnd + SLOGAN_LEN ? (t - clipEnd - SLOGAN_LEN) / 0.3 : 0;
+  if (SL && slt > 0 && t < clipEnd + SL + 0.3) {
+    const out = t > clipEnd + SL ? (t - clipEnd - SL) / 0.3 : 0;
     const a = easeOut(slt / 0.5) * (1 - out);
     textBlock(c, sb.slogan, W / 2, 800 * k, 96 * k, 800, 1.14, a, (1 - easeOut(slt / 0.5)) * 40 * k, k);
     c.globalAlpha = a; c.fillStyle = GOLD; c.fillRect(W / 2 - 200 * k, 1060 * k, 400 * k * easeOut((slt - 0.45) / 0.6), 6 * k); c.globalAlpha = 1;
   }
-  const ct = t - (clipEnd + SLOGAN_LEN + 0.35);
+  const ct = t - (clipEnd + SL + 0.35);
   if (ct > 0) {
-    const fade = t > REEL_TOTAL - 0.3 ? Math.max(0, (REEL_TOTAL - t) / 0.3) : 1;
+    const fade = t > TOTAL - 0.3 ? Math.max(0, (TOTAL - t) / 0.3) : 1;
     const a = easeOut(ct / 0.55) * fade, dy = (1 - easeOut(ct / 0.55)) * 90 * k;
     c.font = `700 ${58 * k}px ${REEL_FONT}`;
     const lines = wrapWords(s => c.measureText(s).width, sb.cta, 790 * k).slice(0, 4);
@@ -258,7 +383,14 @@ export function drawReelFrame(c, W, H, t, media, sb) {
 }
 
 // Sahne başına önizleme anı (yazıların tam göründüğü an)
-export const previewTime = i => (i < SCENE_COUNT ? i * SCENE_LEN + 1.6 : i === SCENE_COUNT ? SCENE_COUNT * SCENE_LEN + 1.6 : REEL_TOTAL - 1.2);
+// i: sahne sırası; N = slogan; N+1 = kapanış
+export function previewTime(i, sb = null) {
+  if (!sb) return i < SCENE_COUNT ? i * SCENE_LEN + 1.6 : i === SCENE_COUNT ? SCENE_COUNT * SCENE_LEN + 1.6 : REEL_TOTAL - 1.2;
+  const tl = timeline(sb), N = sb.scenes.length;
+  if (i < N) return tl.starts[i] + Math.min(1.6, tl.sec(i) - 0.35);
+  if (i === N && tl.slogan) return tl.clipEnd + 1.6;
+  return tl.total - 1.2;
+}
 
 // ====================================================================
 // Tarayıcıda klip yükleme ve video üretimi
@@ -296,7 +428,8 @@ export async function renderReel({ canvas, sb, media, size = 1080, onProgress = 
   const chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const stopped = new Promise(r => { rec.onstop = r; });
-  const started = new Array(SCENE_COUNT).fill(false);
+  const tl = timeline(sb), TOTAL = tl.total;
+  const started = new Array(sb.scenes.length).fill(false);
   let drops = 0, aborted = false;
   rec.start(500);
   const t0 = performance.now(); let last = t0;
@@ -308,12 +441,13 @@ export async function renderReel({ canvas, sb, media, size = 1080, onProgress = 
       last = now;
       media.forEach((m, i) => {
         if (!m || m.tagName !== 'VIDEO') return;
-        if (!started[i] && t >= i * SCENE_LEN - 0.1) { started[i] = true; m.currentTime = 0; m.play().catch(() => {}); }
-        if (started[i] && t > (i + 1) * SCENE_LEN + XF + 0.1 && !m.paused) m.pause();
+        if (i >= sb.scenes.length) return;
+        if (!started[i] && t >= tl.starts[i] - 0.1) { started[i] = true; m.currentTime = 0; m.play().catch(() => {}); }
+        if (started[i] && t > tl.starts[i] + tl.sec(i) + XF + 0.1 && !m.paused) m.pause();
       });
-      drawReelFrame(c, W, H, Math.min(t, REEL_TOTAL), media, sb);
-      onProgress(Math.min(1, t / REEL_TOTAL));
-      if (t >= REEL_TOTAL) return resolve();
+      drawReelFrame(c, W, H, Math.min(t, TOTAL), media, sb);
+      onProgress(Math.min(1, t / TOTAL));
+      if (t >= TOTAL) return resolve();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
