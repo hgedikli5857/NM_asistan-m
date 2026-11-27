@@ -937,4 +937,4 @@ i.c-gold, i.c-navy, i.c-green, i.c-blue, i.c-purple, i.c-red, i.c-gray { color: 
 .auto-tag { color: var(--gold-600); font-weight: 600; }
 .comment-kit h3 { margin: 10px 0 4px; }
 .reel-clip .btn { flex: 1 1 0; min-width: 0; padding-inline: 8px; white-space: nowrap; }
-.reel-clip .reel-clip-name { flex-basis: 100%; }
+.reel-clip .reel-clip-name { flex: 1 1 calc(100% - 60px); }

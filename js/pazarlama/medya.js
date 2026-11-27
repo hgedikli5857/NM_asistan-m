@@ -93,6 +93,7 @@ export async function openPicker(dlg, opts) {
     return `<form class="mp-search" data-mp-form>
         <input id="mp-q" type="search" value="${esc(p.q)}" placeholder="${p.kind === 'video' ? 'Ör. sabah kahvesi, yürüyüş, çalışma masası' : 'Ör. sağlıklı kahvaltı, doğa, ev ofisi'}" aria-label="Arama" enterkeyhint="search">
         <button class="btn btn-primary" type="submit" ${p.busy ? 'disabled' : ''}><i class="ti ti-search" aria-hidden="true"></i> Ara</button></form>
+      ${p.note ? `<p class="small muted">${esc(p.note)}</p>` : ''}
       ${p.items.length ? `<ul class="mp-grid" role="listbox" aria-label="Sonuçlar">${p.items.map((it, i) => `<li>
           <button type="button" role="option" aria-selected="${p.sel === i}" data-mp="pick" data-i="${i}" class="mp-tile">
             <img src="${esc(it.thumb)}" alt="${esc(it.alt || (p.kind === 'video' ? 'Stok video' : 'Stok fotoğraf'))}" loading="lazy">
@@ -100,7 +101,7 @@ export async function openPicker(dlg, opts) {
           </button></li>`).join('')}</ul>
         ${p.more ? `<div class="quick"><button type="button" class="btn btn-ghost" data-mp="more" ${p.busy ? 'disabled' : ''}>Daha fazla göster</button></div>` : ''}
         <p class="small muted">Görseller ${p.source === 'Pexels' ? '<a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>' : '<a href="https://pixabay.com" target="_blank" rel="noopener">Pixabay</a>'}'tan; ticari kullanım ücretsiz. Yatay videolar dikey olarak ortadan kırpılır.</p>`
-      : p.busy ? '<p class="muted">Aranıyor…</p>' : p.searched ? '<p class="muted">Sonuç yok. Daha genel bir kelime dene (ör. "kahve" yerine "sabah").</p>' : ''}`;
+      : p.busy ? '<p class="muted">Aranıyor…</p>' : p.searched ? '<p class="muted">Sonuç yok. Daha genel bir kelime dene (ör. "sabah", "kahve", "doğa") ya da İngilizce yaz (ör. "morning coffee").</p>' : ''}`;
   }
   function foot() {
     if (p.kind === 'ai' || p.sel === null) return '';
@@ -126,6 +127,7 @@ export async function openPicker(dlg, opts) {
     try {
       const d = await call({ action: 'stok', q, kind: p.kind, page });
       p.items = page === 1 ? d.items : [...p.items, ...d.items]; p.page = page; p.more = d.more; p.searched = true; p.source = d.source || 'Pixabay';
+      if (d.q && d.q !== q) { p.note = `"${q}" için sonuç yoktu; İngilizce "${d.q}" olarak arandı.`; p.q = d.q; } else if (page === 1) p.note = '';
     } catch (e) { p.err = e.message; }
     p.busy = false; draw();
   }

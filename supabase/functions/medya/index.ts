@@ -33,8 +33,25 @@ function pixFile(v: Record<string, PixVid>): PixVid | null {
   const list = ['medium', 'small', 'tiny'].map(k => v[k]).filter(f => f && f.url && f.width && (!f.size || f.size < 40 * 1048576));
   return list[0] || null;
 }
-async function pixabay(key: string, q: string, video: boolean, page: number) {
-  const qs = new URLSearchParams({ key, q, lang: 'tr', per_page: '18', page: String(page), safesearch: 'true' });
+// Türkçe arama sonuç vermezse kısa İngilizce anahtar kelimelere çevir (stok etiketleri çoğunlukla İngilizce)
+async function toEnglish(q: string): Promise<string | null> {
+  const key = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!key) return null;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 30, thinking: { type: 'disabled' },
+        messages: [{ role: 'user', content: `Translate this stock-video search into 1-3 simple English keywords. Reply with the keywords only, lowercase, no punctuation.\n\n${q}` }] })
+    });
+    const d = await r.json();
+    const t = (d.content || []).filter((c: { type: string }) => c.type === 'text').map((c: { text: string }) => c.text).join(' ').trim();
+    return t && /^[a-z0-9 \-]{2,60}$/i.test(t) ? t.toLowerCase() : null;
+  } catch { return null; }
+}
+
+async function pixabay(key: string, q: string, video: boolean, page: number, lang = 'tr') {
+  const qs = new URLSearchParams({ key, q, lang, per_page: '18', page: String(page), safesearch: 'true' });
   if (!video) { qs.set('orientation', 'vertical'); qs.set('image_type', 'photo'); }
   const r = await fetch(`https://pixabay.com/api/${video ? 'videos/' : ''}?${qs}`);
   if (!r.ok) {
@@ -84,7 +101,15 @@ Deno.serve(async (req: Request) => {
       const page = Math.min(Math.max(Number(body.page) || 1, 1), 20);
       const video = body.kind !== 'foto';
       if (pixKey) {
-        try { return json({ ...(await pixabay(pixKey, q, video, page)), page }); }
+        try {
+          let res = await pixabay(pixKey, q, video, page);
+          let used = q;
+          if (!res.items.length && page === 1) {
+            const en = await toEnglish(q);
+            if (en && en !== q.toLowerCase()) { res = await pixabay(pixKey, en, video, page, 'en'); used = en; }
+          }
+          return json({ ...res, page, q: used });
+        }
         catch (e) { return json({ error: 'upstream', message: String((e as Error).message) }, 502); }
       }
       const qs = new URLSearchParams({ query: q, orientation: 'portrait', per_page: '15', page: String(page), locale: 'tr-TR' });
