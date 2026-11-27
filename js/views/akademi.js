@@ -4,8 +4,9 @@ import { esc, toast, trError } from '../ui.js';
 import { FIRST_14, MODULES, LESSONS, lessonById, PASS_RATIO } from '../akademi/content.js';
 import { earnedBadges, programDay } from '../akademi/badges.js';
 import { dailyMetrics, activeStreak } from '../olcum/metrics.js';
-import { CATEGORIES, catById, KINDS, LEVELS, DISCLAIMERS, progressId, kindFromFile, embedUrl, requiredPath, filterItems, sortItems,
-  normalizeQuiz, scoreQuiz, aiQuizPrompt, renderText, parseQuizText, quizToText } from '../akademi/library.js';
+import { KINDS, LEVELS, DISCLAIMERS, progressId, kindFromFile, embedUrl, driveInfo, requiredPath, filterItems, sortItems,
+  normalizeQuiz, scoreQuiz, aiQuizPrompt, renderText, parseQuizText, quizToText, FILE_KINDS, URL_KINDS, FOLDER_COLORS, DEFAULT_FOLDERS,
+  childrenOf, folderPath, descendantIds, flatTree, folderStats, rootCategory, mimeOf, textDocHtml } from '../akademi/library.js';
 import { aiChat, aiAvailable, extractJSON } from '../ai/client.js';
 
 const TABS = [
@@ -21,7 +22,7 @@ let el, ctx, s;
 export async function renderAkademi(target, context) {
   el = target; ctx = context;
   const tab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab');
-  s = { tab: TABS.some(t => t.id === tab && (!t.lead || isLead())) ? tab : 'kutuphane', progress: new Map(), items: [], cat: '', q: '', team: null };
+  s = { tab: TABS.some(t => t.id === tab && (!t.lead || isLead())) ? tab : 'kutuphane', progress: new Map(), items: [], folders: [], folder: null, q: '', team: null };
 
   el.innerHTML = `
     <div class="page-head">
@@ -38,13 +39,18 @@ export async function renderAkademi(target, context) {
   el.addEventListener('submit', onSubmit);
   el.addEventListener('input', onInput);
 
-  const [{ data, error }, items] = await Promise.all([
+  const [{ data, error }, items, folders] = await Promise.all([
     supabase.from('academy_progress').select('*'),
-    supabase.from('academy_items').select('*').eq('org_id', ctx.org.id)
+    supabase.from('academy_items').select('*').eq('org_id', ctx.org.id),
+    supabase.from('academy_folders').select('*').eq('org_id', ctx.org.id)
   ]);
   if (error) throw error;
   data.forEach(r => s.progress.set(r.item_id, r));
   s.items = items.error ? [] : items.data;
+  s.folders = folders.error ? [] : folders.data;
+  const fq = new URLSearchParams(location.hash.split('?')[1] || '').get('klasor');
+  if (fq && s.folders.some(f => f.id === fq)) s.folder = fq;
+  seedFolders();
   s.ai = await aiAvailable().catch(() => false);
   const open = new URLSearchParams(location.hash.split('?')[1] || '').get('ac');
   if (open) setTimeout(() => openItem(open), 0);
@@ -68,34 +74,61 @@ function draw() {
 }
 
 // ====================================================================
-// Kütüphane
+// Kütüphane: klasör ve alt klasörlerle düzenlenen materyaller (dosya yöneticisi düzeni)
 const libDone = () => new Set([...s.progress.keys()].filter(k => k.startsWith('lib:')));
-const published = () => s.items.filter(x => x.published);
+const published = () => s.items.filter(x => x.published || isLead());
+const folderName = id => s.folders.find(f => f.id === id)?.name || 'Kütüphane';
 
-function itemCard(x, done) {
-  const k = KINDS[x.kind], c = catById(x.category), ok = done.has(progressId(x.id));
-  return `<button class="card lib-item ${ok ? 'done' : ''}" data-open="${x.id}">
-    <span class="lib-icon k-${x.kind}"><i class="ti ${k.icon}" aria-hidden="true"></i></span>
-    <span class="lib-main"><strong>${esc(x.title)}</strong>
-      ${x.summary ? `<span class="small muted">${esc(x.summary.slice(0, 120))}${x.summary.length > 120 ? '…' : ''}</span>` : ''}
-      <span class="lib-meta small">${esc(k.label)} · ${esc(c.label)}${x.minutes ? ` · ${x.minutes} dk` : ''} · ${esc(LEVELS[x.level])}
-        ${x.required ? '<span class="badge gold">Zorunlu</span>' : ''}${x.quiz?.length ? '<span class="badge">Quiz</span>' : ''}${x.published ? '' : '<span class="badge warn">Taslak</span>'}</span></span>
-    <i class="ti ${ok ? 'ti-circle-check' : 'ti-circle'} lib-check" aria-label="${ok ? 'Tamamlandı' : 'Tamamlanmadı'}"></i>
+function itemRow(x, done, { showPath = false } = {}) {
+  const k = KINDS[x.kind] || KINDS.link, ok = done.has(progressId(x.id));
+  const path = showPath && x.folder_id ? folderPath(s.folders, x.folder_id).map(f => f.name).join(' › ') : '';
+  return `<li class="fm-row ${ok ? 'done' : ''}">
+    <button class="fm-open" data-open="${x.id}">
+      <span class="lib-icon k-${x.kind}"><i class="ti ${k.icon}" aria-hidden="true"></i></span>
+      <span class="lib-main"><strong>${esc(x.title)}</strong>
+        <span class="lib-meta small">${esc(k.label)}${x.minutes ? ` · ${x.minutes} dk` : ''}${path ? ` · ${esc(path)}` : ''}
+          ${x.required ? '<span class="badge gold">Zorunlu</span>' : ''}${x.quiz?.length ? '<span class="badge">Quiz</span>' : ''}${x.published ? '' : '<span class="badge warn">Taslak</span>'}</span></span>
+      <i class="ti ${ok ? 'ti-circle-check' : 'ti-circle'} lib-check" aria-label="${ok ? 'Tamamlandı' : 'Tamamlanmadı'}"></i>
+    </button>
+    ${isLead() ? `<button class="icon-btn" data-act="item-edit" data-id="${x.id}" aria-label="${esc(x.title)} düzenle"><i class="ti ti-dots-vertical" aria-hidden="true"></i></button>` : ''}
+  </li>`;
+}
+
+function folderTile(f, done) {
+  const st = folderStats(s.folders, published(), f.id, done);
+  const pct = st.items ? Math.round(st.done / st.items * 100) : 0;
+  return `<button class="fm-folder c-${f.color}" data-folder="${f.id}">
+    <span class="fm-ficon"><i class="ti ti-folder" aria-hidden="true"></i></span>
+    <span class="fm-fname">${esc(f.name)}</span>
+    <span class="small muted">${st.items} materyal${st.sub ? ` · ${st.sub} klasör` : ''}</span>
+    ${st.items ? `<span class="fm-fbar"><span style="width:${pct}%"></span></span>` : ''}
   </button>`;
+}
+
+function treeHtml(parentId = null, depth = 0) {
+  return childrenOf(s.folders, parentId).map(f => {
+    const open = s.folder && folderPath(s.folders, s.folder).some(p => p.id === f.id);
+    const kids = childrenOf(s.folders, f.id).length;
+    return `<li><button class="fm-tnode ${s.folder === f.id ? 'on' : ''}" data-folder="${f.id}" style="padding-left:${8 + depth * 14}px">
+        <i class="ti ${kids ? (open ? 'ti-folder-open' : 'ti-folder') : 'ti-folder'} c-${f.color}" aria-hidden="true"></i>${esc(f.name)}</button>
+      ${kids && open ? `<ul>${treeHtml(f.id, depth + 1)}</ul>` : ''}</li>`;
+  }).join('');
 }
 
 function viewLibrary() {
   const done = libDone();
   const items = published();
-  const path = requiredPath(items, done);
-  const list = filterItems(items, { category: s.cat, q: s.q });
-  const counts = Object.fromEntries(CATEGORIES.map(c => [c.id, items.filter(x => x.category === c.id).length]));
-  if (!items.length) {
+  const path = requiredPath(items.filter(x => x.published), done);
+  if (!items.length && !s.folders.length) {
     return `<div class="card empty"><i class="ti ti-books" aria-hidden="true"></i><h2>Kütüphane henüz boş</h2>
-      <p class="muted">${isLead() ? 'Ekibinin kendini eğitebilmesi için PDF, video, HTML sayfa, bağlantı ya da yazı ekle. Ürünler, şirket, kazanç planı ve satış eğitimleri için kategoriler hazır.'
-        : 'Liderin materyal ekledikçe burada görünecek. Bu sırada "90 gün programı" derslerine başlayabilirsin.'}</p>
-      ${isLead() ? '<button class="btn btn-gold" data-act="item-new"><i class="ti ti-plus" aria-hidden="true"></i> İlk materyali ekle</button>' : ''}</div>`;
+      <p class="muted">${isLead() ? 'Klasörler hazırlanıyor… Birkaç saniye sonra sayfayı yenile.' : 'Liderin materyal ekledikçe burada görünecek. Bu sırada "90 gün programı" derslerine başlayabilirsin.'}</p></div>`;
   }
+  const crumbs = s.folder ? folderPath(s.folders, s.folder) : [];
+  const cur = s.folders.find(f => f.id === s.folder);
+  const subs = childrenOf(s.folders, s.folder);
+  const q = s.q.trim();
+  const list = q ? filterItems(items, { q }) : sortItems(items.filter(x => (x.folder_id || null) === (s.folder || null)));
+  const cat = cur ? rootCategory(s.folders, cur.id) : '';
   return `
     ${path.total ? `<section class="card path-card">
       <h2><i class="ti ti-route" aria-hidden="true"></i> Öğrenme yolun <span class="small muted">· ${path.done}/${path.total} zorunlu materyal</span></h2>
@@ -104,17 +137,45 @@ function viewLibrary() {
         <button class="btn btn-gold" data-open="${path.next.id}"><i class="ti ti-player-play" aria-hidden="true"></i> Devam et</button></div>`
         : '<p class="small muted">Tüm zorunlu materyalleri bitirdin. Şimdi öğrendiklerini sahada uygula ve yeni gelene anlat.</p>'}
     </section>` : ''}
-    <div class="lib-tools">
-      <div class="field"><label class="sr-only" for="lib-q">Kütüphanede ara</label>
-        <input id="lib-q" data-lib="q" type="search" placeholder="Ara: ürün adı, konu…" value="${esc(s.q)}"></div>
-      ${isLead() ? '<button class="btn btn-ghost" data-act="item-new"><i class="ti ti-plus" aria-hidden="true"></i> Materyal ekle</button>' : ''}
-    </div>
-    <div class="chips lib-cats" role="group" aria-label="Kategoriler">
-      <button class="chip" data-cat="" aria-pressed="${!s.cat}">Tümü <span class="small">${items.length}</span></button>
-      ${CATEGORIES.filter(c => counts[c.id]).map(c => `<button class="chip" data-cat="${c.id}" aria-pressed="${s.cat === c.id}"><i class="ti ${c.icon}" aria-hidden="true"></i>${esc(c.label)} <span class="small">${counts[c.id]}</span></button>`).join('')}
-    </div>
-    ${s.cat && DISCLAIMERS[s.cat] ? `<p class="note small"><i class="ti ti-info-circle" aria-hidden="true"></i> ${esc(DISCLAIMERS[s.cat])}</p>` : ''}
-    <div id="lib-list" class="lib-grid">${list.map(x => itemCard(x, done)).join('') || '<p class="muted">Aramana uyan materyal yok.</p>'}</div>`;
+    <section class="card fm">
+      <aside class="fm-tree" aria-label="Klasörler">
+        <button class="fm-tnode ${!s.folder ? 'on' : ''}" data-folder=""><i class="ti ti-books" aria-hidden="true"></i>Kütüphane</button>
+        <ul>${treeHtml()}</ul>
+      </aside>
+      <div class="fm-main">
+        <div class="fm-bar">
+          <nav class="fm-crumbs" aria-label="Konum">
+            <button class="link-btn" data-folder=""><i class="ti ti-books" aria-hidden="true"></i> Kütüphane</button>
+            ${crumbs.map(f => `<i class="ti ti-chevron-right" aria-hidden="true"></i><button class="link-btn" data-folder="${f.id}">${esc(f.name)}</button>`).join('')}
+          </nav>
+          <input id="lib-q" data-lib="q" type="search" placeholder="Tüm kütüphanede ara…" value="${esc(s.q)}" aria-label="Kütüphanede ara">
+        </div>
+        ${isLead() ? `<div class="quick fm-actions">
+          <button class="btn btn-gold sm" data-act="item-new"><i class="ti ti-file-plus" aria-hidden="true"></i> Materyal ekle</button>
+          <button class="btn btn-ghost sm" data-act="folder-new"><i class="ti ti-folder-plus" aria-hidden="true"></i> ${cur ? 'Alt klasör' : 'Yeni klasör'}</button>
+          ${cur ? `<button class="btn btn-ghost sm" data-act="folder-edit" data-id="${cur.id}"><i class="ti ti-pencil" aria-hidden="true"></i> Klasörü düzenle</button>` : ''}
+        </div>` : ''}
+        ${DISCLAIMERS[cat] && !q ? `<p class="note small"><i class="ti ti-info-circle" aria-hidden="true"></i> ${esc(DISCLAIMERS[cat])}</p>` : ''}
+        ${!q && subs.length ? `<div class="fm-folders">${subs.map(f => folderTile(f, done)).join('')}</div>` : ''}
+        ${list.length ? `<ul class="fm-list">${list.map(x => itemRow(x, done, { showPath: !!q })).join('')}</ul>`
+          : (q ? '<p class="muted">Aramana uyan materyal yok.</p>' : (!subs.length ? `<p class="muted fm-empty"><i class="ti ti-folder-open" aria-hidden="true"></i> Bu klasör boş.${isLead() ? ' "Materyal ekle" ile doldur.' : ''}</p>` : ''))}
+      </div>
+    </section>`;
+}
+
+// İlk açılışta (lider) ana klasörleri oluştur ve eski materyalleri kategorilerine göre yerleştir
+async function seedFolders() {
+  if (!isLead() || s.folders.length) return;
+  const { data, error } = await supabase.from('academy_folders').insert(DEFAULT_FOLDERS.map(f => ({ ...f, org_id: ctx.org.id }))).select();
+  if (error) return;
+  s.folders = data;
+  for (const x of s.items.filter(i => !i.folder_id)) {
+    const f = data.find(d => d.category === x.category);
+    if (!f) continue;
+    const r = await supabase.from('academy_items').update({ folder_id: f.id }).eq('id', x.id).select().single();
+    if (!r.error) s.items = s.items.map(i => (i.id === x.id ? r.data : i));
+  }
+  if (s.tab === 'kutuphane') draw();
 }
 
 async function signed(path) {
@@ -122,35 +183,83 @@ async function signed(path) {
   if (error) throw new Error('Dosya açılamadı: ' + trError(error));
   return data.signedUrl;
 }
+// Dosyayı doğru türüyle indir (depo HTML'i düz metin olarak sunar; bu yüzden kod görünüyordu)
+async function fileBlob(x) {
+  const res = await fetch(await signed(x.file_path));
+  if (!res.ok) throw new Error('Dosya indirilemedi.');
+  const raw = await res.blob();
+  return new Blob([raw], { type: mimeOf(x.file_name, raw.type) });
+}
 
 let pdfLib = null;
-async function renderPdf(box, url) {
+async function loadPdfLib() {
+  if (!pdfLib) {
+    pdfLib = await import('../vendor/pdfjs/pdf.min.mjs');
+    pdfLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+  }
+  return pdfLib;
+}
+async function renderPdf(box, data) {
   box.innerHTML = '<p class="muted small">PDF yükleniyor…</p>';
   try {
-    if (!pdfLib) {
-      pdfLib = await import('../vendor/pdfjs/pdf.min.mjs');
-      pdfLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
-    }
-    const doc = await pdfLib.getDocument({ url }).promise;
+    const lib = await loadPdfLib();
+    const doc = await lib.getDocument({ data }).promise;
     box.innerHTML = `<p class="small muted">${doc.numPages} sayfa</p>`;
     const width = Math.min(box.clientWidth || 600, 900);
     for (let i = 1; i <= Math.min(doc.numPages, 80); i++) {
       if (!box.isConnected) return;
       const page = await doc.getPage(i);
       const vp1 = page.getViewport({ scale: 1 });
-      const scale = (width / vp1.width) * Math.min(2, window.devicePixelRatio || 1);
-      const vp = page.getViewport({ scale });
+      const vp = page.getViewport({ scale: (width / vp1.width) * Math.min(2, window.devicePixelRatio || 1) });
       const cv = document.createElement('canvas');
-      cv.width = vp.width; cv.height = vp.height; cv.className = 'pdf-page';
-      cv.setAttribute('aria-label', `Sayfa ${i}`);
+      cv.width = vp.width; cv.height = vp.height; cv.className = 'pdf-page'; cv.setAttribute('aria-label', `Sayfa ${i}`);
       box.appendChild(cv);
       await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
     }
-    if (doc.numPages > 80) box.insertAdjacentHTML('beforeend', '<p class="small muted">İlk 80 sayfa gösterildi; tamamı için "Yeni sekmede aç".</p>');
-    s.pdfText = null; s.pdfDoc = doc;
+    if (doc.numPages > 80) box.insertAdjacentHTML('beforeend', '<p class="small muted">İlk 80 sayfa gösterildi; tamamı için "Tarayıcıda aç".</p>');
   } catch (e) {
-    box.innerHTML = `<p class="error">PDF gösterilemedi (${esc(e.message || e)}). "Yeni sekmede aç" ile dene.</p>`;
+    box.innerHTML = `<p class="error">PDF gösterilemedi (${esc(e.message || e)}). "Tarayıcıda aç" ile dene.</p>`;
   }
+}
+
+// HTML'i ayrı sekmede, uygulamadan yalıtılmış biçimde aç (sayfa gibi görünür, uygulamaya erişemez)
+function openHtmlTab(win, html, title) {
+  win.document.open();
+  win.document.write(`<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+    <style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style></head><body><iframe sandbox="allow-scripts allow-popups allow-forms" title="${esc(title)}"></iframe></body></html>`);
+  win.document.close();
+  win.document.querySelector('iframe').srcdoc = html;
+}
+async function openInTab(x) {
+  const win = window.open('', '_blank');
+  if (!win) { toast('Açılır pencere engellendi; tarayıcı ayarından izin ver.'); return; }
+  win.document.write('<p style="font-family:sans-serif;padding:20px">Açılıyor…</p>');
+  try {
+    if (x.kind === 'yazi') { openHtmlTab(win, textDocHtml(x.title, x.body, esc), x.title); return; }
+    if (x.kind === 'html') { openHtmlTab(win, await (await fileBlob(x)).text(), x.title); return; }
+    const blob = await fileBlob(x);
+    const url = URL.createObjectURL(blob);
+    win.location.href = url;
+    // Tarayıcı dosyayı gösteremezse (ör. telefonda PDF) indirme bağlantısı göster
+    setTimeout(() => {
+      try {
+        if (!win.closed && win.location.href === 'about:blank') {
+          win.document.body.innerHTML = `<div style="font-family:sans-serif;padding:24px;line-height:1.6"><h2>${esc(x.title)}</h2>
+            <p>Bu tarayıcı dosyayı sekmede gösteremedi; telefonundaki uygulamayla açmak için indir.</p>
+            <p><a href="${url}" download="${esc(x.file_name || x.title)}" style="font-size:18px">Dosyayı indir</a></p></div>`;
+        }
+      } catch { /* sekme dosyaya geçti */ }
+    }, 2500);
+  } catch (e) { win.close(); toast(e.message); }
+}
+async function downloadItem(x) {
+  try {
+    let blob, name = x.file_name || x.title;
+    if (x.kind === 'yazi') { blob = new Blob(['﻿' + textDocHtml(x.title, x.body, esc)], { type: 'application/msword' }); name = `${x.title}.doc`; }
+    else blob = await fileBlob(x);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { toast(e.message); }
 }
 
 async function openItem(id) {
@@ -158,14 +267,21 @@ async function openItem(id) {
   if (!x) return;
   const d = el.querySelector('#a-dialog');
   const done = s.progress.has(progressId(x.id));
-  const c = catById(x.category);
+  const crumbs = x.folder_id ? folderPath(s.folders, x.folder_id).map(f => f.name).join(' › ') : 'Kütüphane';
+  const cat = x.folder_id ? rootCategory(s.folders, x.folder_id) : x.category;
+  const ext = x.kind === 'link' || x.kind === 'drive';
   d.innerHTML = `<form data-form="lib-done" data-id="${x.id}" novalidate>
-    <header class="sheet-head"><div><div class="eyebrow"><i class="ti ${c.icon}" aria-hidden="true"></i> ${esc(c.label)} · ${esc(KINDS[x.kind].label)}${x.minutes ? ` · ${x.minutes} dk` : ''}</div>
+    <header class="sheet-head"><div><div class="eyebrow"><i class="ti ${KINDS[x.kind]?.icon}" aria-hidden="true"></i> ${esc(crumbs)}${x.minutes ? ` · ${x.minutes} dk` : ''}</div>
       <h2 id="a-dialog-title">${esc(x.title)}</h2></div>
       <button type="button" class="icon-btn" data-act="close" aria-label="Kapat"><i class="ti ti-x" aria-hidden="true"></i></button></header>
     <div class="sheet-body lesson-body">
-      ${DISCLAIMERS[x.category] ? `<p class="note small"><i class="ti ti-info-circle" aria-hidden="true"></i> ${esc(DISCLAIMERS[x.category])}</p>` : ''}
+      ${DISCLAIMERS[cat] ? `<p class="note small"><i class="ti ti-info-circle" aria-hidden="true"></i> ${esc(DISCLAIMERS[cat])}</p>` : ''}
       ${x.summary ? `<p class="muted">${esc(x.summary)}</p>` : ''}
+      <div class="quick lib-open">
+        ${ext ? `<a class="btn btn-ghost sm" href="${esc((driveInfo(x.url)?.open) || x.url)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> ${x.kind === 'drive' ? "Drive'da aç" : 'Bağlantıyı aç'}</a>`
+          : `<button type="button" class="btn btn-ghost sm" data-act="lib-tab" data-id="${x.id}"><i class="ti ti-external-link" aria-hidden="true"></i> Tarayıcıda aç</button>
+             <button type="button" class="btn btn-ghost sm" data-act="lib-dl" data-id="${x.id}"><i class="ti ti-download" aria-hidden="true"></i> ${x.kind === 'yazi' ? 'Word olarak indir' : x.kind === 'belge' ? 'İndir (Office ile aç)' : 'İndir'}</button>`}
+      </div>
       <div id="lib-view" class="lib-view"><p class="muted small">Yükleniyor…</p></div>
       ${x.kind !== 'yazi' && x.body ? `<div class="lib-notes">${renderText(x.body, esc)}</div>` : ''}
       ${x.quiz?.length ? `<h3>Kısa quiz</h3>${x.quiz.map((q, qi) => `<fieldset class="quiz-q" data-q="${qi}"><legend>${qi + 1}. ${esc(q.q)}</legend>
@@ -175,29 +291,38 @@ async function openItem(id) {
     </div>
     <footer class="sheet-foot">
       ${isLead() ? `<button type="button" class="btn btn-ghost" data-act="item-edit" data-id="${x.id}"><i class="ti ti-pencil" aria-hidden="true"></i> Düzenle</button>` : ''}
-      <span id="lib-ext"></span>
       <button class="btn btn-primary" type="submit">${x.quiz?.length ? 'Cevapları kontrol et' : done ? 'Tamamlandı ✓' : 'Tamamladım'}</button></footer></form>`;
   if (!d.open) d.showModal();
   d.querySelector('.sheet-body').scrollTop = 0;
-  const view = d.querySelector('#lib-view'), ext = d.querySelector('#lib-ext');
+  const view = d.querySelector('#lib-view');
+  const frame = (src, cls = '') => `<div class="embed ${cls}"><iframe src="${esc(src)}" title="${esc(x.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>`;
   try {
-    if (x.kind === 'yazi') { view.innerHTML = renderText(x.body, esc); return; }
-    if (x.kind === 'link') {
-      const emb = embedUrl(x.url);
-      view.innerHTML = emb ? `<div class="embed"><iframe src="${esc(emb)}" title="${esc(x.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>`
-        : `<p><a class="btn btn-gold" href="${esc(x.url)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Bağlantıyı aç</a></p>`;
+    if (x.kind === 'yazi') { view.innerHTML = `<article class="lib-doc">${renderText(x.body, esc)}</article>`; return; }
+    if (ext) {
+      const di = driveInfo(x.url), emb = embedUrl(x.url);
+      view.innerHTML = emb ? frame(emb, di && di.type !== 'file' ? 'tall' : (emb.includes('spotify') ? 'audio' : ''))
+        + (di ? '<p class="small muted">Açılmıyorsa Drive\'da dosyanın paylaşımını "Bağlantıya sahip olan herkes görüntüleyebilir" yap.</p>' : '')
+        : `<p class="muted">Bu bağlantı uygulama içinde gösterilemiyor. Yukarıdaki "Bağlantıyı aç" ile yeni sekmede açılır.</p>`;
       return;
     }
     if (!x.file_path) { view.innerHTML = '<p class="muted">Dosya eklenmemiş.</p>'; return; }
-    const url = await signed(x.file_path);
-    ext.innerHTML = `<a class="btn btn-ghost" href="${esc(url)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Yeni sekmede aç</a>`;
-    if (x.kind === 'pdf') await renderPdf(view, url);
-    else if (x.kind === 'video') view.innerHTML = `<video src="${esc(url)}" controls playsinline preload="metadata" class="lib-video"></video>`;
-    else if (x.kind === 'gorsel') view.innerHTML = `<img src="${esc(url)}" alt="${esc(x.title)}" class="lib-img">`;
+    if (x.kind === 'belge') {
+      const url = await signed(x.file_path);
+      view.innerHTML = frame(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`, 'tall')
+        + '<p class="small muted">Önizleme Microsoft Office Online ile gösterilir. Telefonda en iyi sonuç için "İndir (Office ile aç)".</p>';
+      return;
+    }
+    const blob = await fileBlob(x);
+    if (!view.isConnected) return;
+    const url = URL.createObjectURL(blob);
+    if (x.kind === 'pdf') await renderPdf(view, new Uint8Array(await blob.arrayBuffer()));
+    else if (x.kind === 'video') view.innerHTML = `<video src="${url}" controls playsinline preload="metadata" class="lib-video"></video>`;
+    else if (x.kind === 'ses') view.innerHTML = `<div class="lib-audio"><i class="ti ti-headphones" aria-hidden="true"></i><audio src="${url}" controls preload="metadata"></audio>
+        <div class="chips" role="group" aria-label="Hız">${[1, 1.25, 1.5, 2].map(r => `<button type="button" class="chip" data-rate="${r}" aria-pressed="${r === 1}">${String(r).replace('.', ',')}×</button>`).join('')}</div></div>`;
+    else if (x.kind === 'gorsel') view.innerHTML = `<img src="${url}" alt="${esc(x.title)}" class="lib-img">`;
     else if (x.kind === 'html') {
-      const html = await (await fetch(url)).text();
-      view.innerHTML = '<div class="embed html"><iframe sandbox="allow-scripts allow-popups" title="' + esc(x.title) + '"></iframe></div>';
-      view.querySelector('iframe').srcdoc = html;
+      view.innerHTML = '<div class="embed html"><iframe sandbox="allow-scripts allow-popups allow-forms" title="' + esc(x.title) + '"></iframe></div>';
+      view.querySelector('iframe').srcdoc = await blob.text();
     }
   } catch (e) { view.innerHTML = `<p class="error">${esc(e.message || e)}</p>`; }
 }
@@ -224,22 +349,76 @@ async function submitLib(form) {
   if (error) { err.textContent = trError(error); return; }
   s.progress.set(progressId(x.id), data);
   el.querySelector('#a-dialog').close();
-  const path = requiredPath(published(), libDone());
+  const path = requiredPath(published().filter(i => i.published), libDone());
   toast(score != null ? `Tamamlandı: %${score}.` : 'Tamamlandı olarak işaretlendi.');
   if (x.required && path.total && path.done === path.total) toast('Öğrenme yolunun tamamını bitirdin!');
   draw();
+}
+
+// ---------------- Klasör işlemleri (sahip / lider) ----------------
+function folderForm(f = null) {
+  const parent = f ? f.parent_id : s.folder;
+  const d = el.querySelector('#a-dialog');
+  d.innerHTML = `<form data-form="folder" data-id="${f ? f.id : ''}" novalidate>
+    <header class="sheet-head"><h2 id="a-dialog-title">${f ? 'Klasörü düzenle' : parent ? `"${esc(folderName(parent))}" içine alt klasör` : 'Yeni klasör'}</h2>
+      <button type="button" class="icon-btn" data-act="close" aria-label="Kapat"><i class="ti ti-x" aria-hidden="true"></i></button></header>
+    <div class="sheet-body">
+      <div class="field"><label for="f-name">Klasör adı *</label><input id="f-name" name="name" maxlength="80" value="${esc(f?.name || '')}" placeholder="Ör. Patch ürünleri"></div>
+      <div class="field"><span class="label">Renk</span><div class="chips" role="radiogroup" aria-label="Renk">${Object.entries(FOLDER_COLORS).map(([k, l]) =>
+        `<label class="chip radio-chip"><input type="radio" name="color" value="${k}" ${k === (f?.color || (parent ? s.folders.find(x => x.id === parent)?.color : 'gold')) ? 'checked' : ''}><i class="ti ti-folder c-${k}" aria-hidden="true"></i>${l}</label>`).join('')}</div></div>
+      ${f ? `<div class="field"><label for="f-parent">Üst klasör</label><select id="f-parent" name="parent">
+        <option value="">Kütüphane (en üst)</option>
+        ${flatTree(s.folders).filter(x => !descendantIds(s.folders, f.id).has(x.id)).map(x => `<option value="${x.id}" ${x.id === f.parent_id ? 'selected' : ''}>${'— '.repeat(x.depth)}${esc(x.name)}</option>`).join('')}
+      </select></div>` : ''}
+      <div class="field"><label for="f-sort">Sıra</label><input id="f-sort" name="sort" type="number" min="0" max="9999" value="${esc(f?.sort ?? 100)}"></div>
+      <p class="error" id="f-error" role="alert"></p>
+    </div>
+    <footer class="sheet-foot">
+      ${f ? `<button type="button" class="btn btn-ghost" data-act="folder-del" data-id="${f.id}">Sil</button>` : ''}
+      <button type="button" class="btn btn-ghost" data-act="close">Vazgeç</button>
+      <button class="btn btn-primary" type="submit">Kaydet</button></footer></form>`;
+  if (!d.open) d.showModal();
+  d.querySelector('#f-name').focus();
+}
+async function saveFolder(form) {
+  const id = form.dataset.id, err = form.querySelector('#f-error');
+  const name = form.elements.name.value.trim();
+  if (!name) { err.textContent = 'Klasör adı yaz.'; return; }
+  const row = { name, color: form.elements.color.value || 'gold', sort: +form.elements.sort.value || 100 };
+  if (id) row.parent_id = form.elements.parent.value || null;
+  const parentId = id ? row.parent_id : s.folder;
+  row.category = parentId ? rootCategory(s.folders, parentId) : (s.folders.find(f => f.id === id)?.category || 'diger');
+  const q = id ? supabase.from('academy_folders').update(row).eq('id', id).select().single()
+    : supabase.from('academy_folders').insert({ ...row, org_id: ctx.org.id, parent_id: s.folder || null }).select().single();
+  const { data, error } = await q;
+  if (error) { err.textContent = trError(error); return; }
+  s.folders = id ? s.folders.map(f => (f.id === id ? data : f)) : [...s.folders, data];
+  el.querySelector('#a-dialog').close();
+  if (!id) s.folder = data.id;
+  toast(id ? 'Klasör güncellendi.' : 'Klasör oluşturuldu.'); draw();
+}
+async function delFolder(id) {
+  const ids = descendantIds(s.folders, id);
+  const n = s.items.filter(x => x.folder_id && ids.has(x.folder_id)).length;
+  if (!confirm(`"${folderName(id)}" ve alt klasörleri silinsin mi?${n ? ` İçindeki ${n} materyal silinmez, "Kütüphane" en üstüne taşınır.` : ''}`)) return;
+  const { error } = await supabase.from('academy_folders').delete().eq('id', id);
+  if (error) { toast(trError(error)); return; }
+  s.folders = s.folders.filter(f => !ids.has(f.id));
+  s.items = s.items.map(x => (x.folder_id && ids.has(x.folder_id) ? { ...x, folder_id: null } : x));
+  if (s.folder && ids.has(s.folder)) s.folder = null;
+  el.querySelector('#a-dialog').close(); toast('Klasör silindi.'); draw();
 }
 
 // ---------------- Yönetim (sahip / lider) ----------------
 function viewAdmin() {
   const all = sortItems(s.items);
   return `<section class="card">
-      <div class="card-head"><h2><i class="ti ti-books" aria-hidden="true"></i> Materyaller <span class="small muted">· ${all.length}</span></h2>
+      <div class="card-head"><h2><i class="ti ti-books" aria-hidden="true"></i> Materyaller <span class="small muted">· ${all.length} materyal · ${s.folders.length} klasör</span></h2>
         <button class="btn btn-gold" data-act="item-new"><i class="ti ti-plus" aria-hidden="true"></i> Materyal ekle</button></div>
-      <p class="small muted">PDF, video (50 MB'a kadar ya da YouTube/Vimeo/Drive bağlantısı), HTML sayfa, görsel, bağlantı ya da yazı ekleyebilirsin. "Zorunlu" işaretlediklerin yeni gelenlerin öğrenme yolunu oluşturur.</p>
+      <p class="small muted">Klasörleri düzenlemek için Kütüphane sekmesini kullan. Burada tüm materyaller tek listede.</p>
       ${all.length ? `<ul class="entry-list admin-list">${all.map(x => `<li><button class="link-btn" data-act="item-edit" data-id="${x.id}">
-          <i class="ti ${KINDS[x.kind].icon}" aria-hidden="true"></i> ${esc(x.title)}</button>
-          <span class="small muted">${esc(catById(x.category).label)}${x.required ? ' · Zorunlu' : ''}${x.published ? '' : ' · Taslak'}</span></li>`).join('')}</ul>` : ''}
+          <i class="ti ${KINDS[x.kind]?.icon}" aria-hidden="true"></i> ${esc(x.title)}</button>
+          <span class="small muted">${esc(x.folder_id ? folderPath(s.folders, x.folder_id).map(f => f.name).join(' › ') : 'Kütüphane')}${x.required ? ' · Zorunlu' : ''}${x.published ? '' : ' · Taslak'}</span></li>`).join('')}</ul>` : ''}
     </section>
     <section class="card" style="margin-top:16px">
       <h2><i class="ti ti-users" aria-hidden="true"></i> Ekibin ilerlemesi</h2>
@@ -265,32 +444,42 @@ async function loadTeam() {
     <p class="small muted">7 günden uzun süredir çalışmayanlar turuncu görünür. Yargılamadan, "nasıl gidiyor, takıldığın yer var mı?" diye sor.</p>`;
 }
 
+// ---------------- Materyal formu ----------------
+let rec = null; // ses kaydı { mr, chunks, blob, url, t0, timer }
 function itemForm(x = null) {
-  const v = x || { kind: 'pdf', category: s.cat || 'baslangic', level: 'baslangic', required: false, published: true, sort: 100 };
+  const v = x || { kind: 'pdf', folder_id: s.folder || null, level: 'baslangic', required: false, published: true, sort: 100 };
   const d = el.querySelector('#a-dialog');
+  stopRec(true);
   d.innerHTML = `<form data-form="item" data-id="${x ? x.id : ''}" novalidate>
     <header class="sheet-head"><h2 id="a-dialog-title">${x ? 'Materyali düzenle' : 'Materyal ekle'}</h2>
       <button type="button" class="icon-btn" data-act="close" aria-label="Kapat"><i class="ti ti-x" aria-hidden="true"></i></button></header>
     <div class="sheet-body">
       <div class="field"><span class="label">Tür</span><div class="chips" role="radiogroup" aria-label="Materyal türü">${Object.entries(KINDS).map(([k, t]) =>
         `<label class="chip radio-chip"><input type="radio" name="kind" value="${k}" ${k === v.kind ? 'checked' : ''}><i class="ti ${t.icon}" aria-hidden="true"></i>${esc(t.label)}</label>`).join('')}</div></div>
+      <div class="field"><label for="i-folder">Klasör</label><select id="i-folder" name="folder">
+        <option value="">Kütüphane (en üst)</option>
+        ${flatTree(s.folders).map(f => `<option value="${f.id}" ${f.id === v.folder_id ? 'selected' : ''}>${'— '.repeat(f.depth)}${esc(f.name)}</option>`).join('')}
+      </select></div>
       <div class="field kind-file"><label for="i-file">Dosya ${x?.file_name ? `(şu an: ${esc(x.file_name)})` : ''}</label><input id="i-file" name="file" type="file">
         <span class="small muted">En fazla 50 MB. Büyük videolar için YouTube'a "liste dışı" yükleyip "Bağlantı" türünü kullan.</span></div>
-      <div class="field kind-link"><label for="i-url">Bağlantı (YouTube, Vimeo, Google Drive ya da web sayfası)</label><input id="i-url" name="url" type="url" value="${esc(v.url || '')}" placeholder="https://"></div>
+      <div class="field kind-rec"><span class="label">ya da şimdi kaydet</span>
+        <div class="quick"><button type="button" class="btn btn-ghost" data-act="rec"><i class="ti ti-microphone" aria-hidden="true"></i> <span id="rec-l">Kayda başla</span></button>
+          <span class="small muted" id="rec-t"></span></div><div id="rec-out"></div></div>
+      <div class="field kind-link"><label for="i-url" id="i-url-l">Bağlantı</label><input id="i-url" name="url" type="url" value="${esc(v.url || '')}" placeholder="https://">
+        <span class="small muted" id="i-url-h"></span></div>
       <div class="field"><label for="i-title">Başlık *</label><input id="i-title" name="title" maxlength="160" value="${esc(v.title || '')}"></div>
       <div class="field"><label for="i-sum">Kısa açıklama</label><textarea id="i-sum" name="summary" rows="2" maxlength="600">${esc(v.summary || '')}</textarea></div>
       <div class="form-2">
-        <div class="field"><label for="i-cat">Kategori</label><select id="i-cat" name="category">${CATEGORIES.map(c => `<option value="${c.id}" ${c.id === v.category ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></div>
         <div class="field"><label for="i-lvl">Seviye</label><select id="i-lvl" name="level">${Object.entries(LEVELS).map(([k, l]) => `<option value="${k}" ${k === v.level ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      </div>
-      <div class="form-2">
         <div class="field"><label for="i-min">Süre (dakika)</label><input id="i-min" name="minutes" type="number" min="1" max="600" value="${esc(v.minutes ?? '')}"></div>
-        <div class="field"><label for="i-sort">Sıra</label><input id="i-sort" name="sort" type="number" min="0" max="9999" value="${esc(v.sort ?? 100)}"></div>
       </div>
       <div class="field"><label for="i-body">${v.kind === 'yazi' ? 'Metin *' : 'Notlar (isteğe bağlı)'}</label>
         <textarea id="i-body" name="body" rows="8" maxlength="20000" placeholder="Boş satır = yeni paragraf · '- ' ile madde · '## ' ile ara başlık">${esc(v.body || '')}</textarea></div>
-      <label class="inline-check"><input type="checkbox" name="required" ${v.required ? 'checked' : ''}> Zorunlu (yeni gelenlerin öğrenme yoluna eklenir)</label><br>
-      <label class="inline-check"><input type="checkbox" name="published" ${v.published ? 'checked' : ''}> Yayında (işaretsizse yalnızca liderler görür)</label>
+      <div class="form-2">
+        <label class="inline-check"><input type="checkbox" name="required" ${v.required ? 'checked' : ''}> Zorunlu (öğrenme yoluna eklenir)</label>
+        <label class="inline-check"><input type="checkbox" name="published" ${v.published ? 'checked' : ''}> Yayında</label>
+      </div>
+      <div class="field"><label for="i-sort">Sıra</label><input id="i-sort" name="sort" type="number" min="0" max="9999" value="${esc(v.sort ?? 100)}"></div>
       <fieldset class="reel-scene" style="margin-top:12px"><legend>Quiz (isteğe bağlı)</legend>
         <textarea id="i-quiz" name="quiz" rows="6" placeholder="Soru?&#10;* doğru seçenek&#10;- yanlış seçenek&#10;- yanlış seçenek&#10;&#10;İkinci soru?&#10;- …">${esc(quizToText(v.quiz))}</textarea>
         <span class="small muted">Sorular arasında boş satır bırak; doğru seçeneğin başına * koy. Geçme notu %60.</span>
@@ -307,42 +496,77 @@ function itemForm(x = null) {
 }
 function syncKind(form) {
   const kind = form.elements.kind.value;
-  form.querySelector('.kind-file').hidden = !['pdf', 'video', 'html', 'gorsel'].includes(kind);
-  form.querySelector('.kind-link').hidden = kind !== 'link';
+  form.querySelector('.kind-file').hidden = !FILE_KINDS.includes(kind);
+  form.querySelector('.kind-rec').hidden = kind !== 'ses';
+  form.querySelector('.kind-link').hidden = !URL_KINDS.includes(kind);
   form.elements.file.accept = KINDS[kind].accept;
+  form.querySelector('#i-url-l').textContent = kind === 'drive' ? 'Google Drive bağlantısı (dosya, klasör, doküman, tablo ya da sunum)' : 'Bağlantı (YouTube, Vimeo, Spotify ya da web sayfası)';
+  form.querySelector('#i-url-h').textContent = kind === 'drive' ? 'Drive\'da dosyaya sağ tıkla → Paylaş → "Bağlantıya sahip olan herkes görüntüleyebilir" → Bağlantıyı kopyala.' : '';
   form.querySelector('label[for="i-body"]').textContent = kind === 'yazi' ? 'Metin *' : 'Notlar (isteğe bağlı)';
+}
+
+async function toggleRec(btn) {
+  if (rec?.mr?.state === 'recording') { rec.mr.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+    const mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    rec = { mr, chunks: [], t0: Date.now() };
+    mr.ondataavailable = e => e.data.size && rec.chunks.push(e.data);
+    mr.onstop = () => {
+      stream.getTracks().forEach(t => t.stop()); clearInterval(rec.timer);
+      const mime = (mr.mimeType || 'audio/webm').split(';')[0];
+      rec.blob = new Blob(rec.chunks, { type: mime }); rec.url = URL.createObjectURL(rec.blob);
+      const out = el.querySelector('#rec-out'); if (out) out.innerHTML = `<audio src="${rec.url}" controls></audio><p class="small muted">Kayıt hazır; "Kaydet" ile yüklenir.</p>`;
+      const l = el.querySelector('#rec-l'); if (l) l.textContent = 'Yeniden kaydet';
+    };
+    mr.start(1000);
+    rec.timer = setInterval(() => { const t = el.querySelector('#rec-t'); if (t) { const n = Math.round((Date.now() - rec.t0) / 1000); t.textContent = `● ${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; } }, 500);
+    btn.querySelector('#rec-l').textContent = 'Kaydı bitir';
+  } catch { toast('Mikrofona erişilemedi; tarayıcı iznini kontrol et.'); }
+}
+function stopRec(reset = false) {
+  if (rec?.mr?.state === 'recording') rec.mr.stop();
+  if (reset) rec = null;
 }
 
 async function saveItem(form) {
   const f = n => form.elements[n];
   const err = form.querySelector('#i-error');
   const id = form.dataset.id, old = s.items.find(i => i.id === id);
-  const kind = f('kind').value, file = f('file').files[0];
+  const kind = f('kind').value;
+  let file = f('file').files[0];
+  if (!file && kind === 'ses' && rec?.blob) {
+    const ext = rec.blob.type.includes('mp4') ? 'm4a' : 'webm';
+    file = new File([rec.blob], `ses-kaydi-${new Date().toISOString().slice(0, 10)}.${ext}`, { type: rec.blob.type });
+  }
+  const folderId = f('folder').value || null;
   const row = {
-    kind, title: f('title').value.trim(), summary: f('summary').value.trim() || null, category: f('category').value, level: f('level').value,
+    kind, folder_id: folderId, category: folderId ? rootCategory(s.folders, folderId) : 'diger',
+    title: f('title').value.trim(), summary: f('summary').value.trim() || null, level: f('level').value,
     minutes: f('minutes').value ? +f('minutes').value : null, sort: f('sort').value ? +f('sort').value : 100,
     body: f('body').value.trim() || null, required: f('required').checked, published: f('published').checked,
-    url: kind === 'link' ? f('url').value.trim() : null
+    url: URL_KINDS.includes(kind) ? f('url').value.trim() : null
   };
   const qt = f('quiz').value.trim();
   row.quiz = qt ? parseQuizText(qt) : null;
   if (row.title.length < 2) { err.textContent = 'Başlık yaz.'; return; }
-  if (kind === 'link' && !/^https?:\/\//i.test(row.url || '')) { err.textContent = 'Geçerli bir bağlantı gir (https://…).'; return; }
+  if (URL_KINDS.includes(kind) && !/^https?:\/\//i.test(row.url || '')) { err.textContent = 'Geçerli bir bağlantı gir (https://…).'; return; }
+  if (kind === 'drive' && !driveInfo(row.url)) { err.textContent = 'Bu bir Google Drive / Dokümanlar bağlantısı değil. Diğer bağlantılar için "Bağlantı" türünü seç.'; return; }
   if (kind === 'yazi' && !row.body) { err.textContent = 'Metni yaz.'; return; }
   if (qt && !row.quiz) { err.textContent = 'Quiz biçimi okunamadı: her soruda en az 2 seçenek ve * ile işaretli bir doğru cevap olmalı.'; return; }
-  const needsFile = ['pdf', 'video', 'html', 'gorsel'].includes(kind);
-  if (needsFile && !file && !(old?.file_path && old.kind === kind)) { err.textContent = 'Dosya seç.'; return; }
+  const needsFile = FILE_KINDS.includes(kind);
+  if (needsFile && !file && !(old?.file_path && old.kind === kind)) { err.textContent = kind === 'ses' ? 'Ses dosyası seç ya da kaydet.' : 'Dosya seç.'; return; }
   if (file) {
     if (kindFromFile(file) !== kind) { err.textContent = `Seçtiğin dosya ${KINDS[kind].label} değil.`; return; }
-    if (file.size > 50 * 1048576) { err.textContent = 'Dosya 50 MB\'tan büyük. Videoyu YouTube\'a "liste dışı" yükleyip bağlantı olarak ekleyebilirsin.'; return; }
+    if (file.size > 50 * 1048576) { err.textContent = 'Dosya 50 MB\'tan büyük. Videoyu YouTube\'a "liste dışı" ya da Drive\'a yükleyip bağlantı olarak ekleyebilirsin.'; return; }
   }
   err.textContent = file ? 'Dosya yükleniyor…' : '';
   try {
     if (file) {
       const ext = (file.name.split('.').pop() || kind).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5);
       const path = `${ctx.org.id}/${crypto.randomUUID()}.${ext}`;
-      const type = kind === 'html' ? 'text/html' : file.type;
-      const up = await supabase.storage.from('akademi').upload(path, file, { contentType: type });
+      const up = await supabase.storage.from('akademi').upload(path, file, { contentType: mimeOf(file.name, file.type) });
       if (up.error) throw new Error(trError(up.error));
       Object.assign(row, { file_path: path, file_name: file.name.slice(0, 160), file_size: file.size });
     } else if (!needsFile) Object.assign(row, { file_path: null, file_name: null, file_size: null });
@@ -352,7 +576,9 @@ async function saveItem(form) {
     if (error) throw new Error(trError(error));
     if (old?.file_path && old.file_path !== data.file_path) await supabase.storage.from('akademi').remove([old.file_path]);
     s.items = id ? s.items.map(i => (i.id === id ? data : i)) : [...s.items, data];
+    stopRec(true);
     el.querySelector('#a-dialog').close();
+    if (!s.q) s.folder = data.folder_id;
     toast(id ? 'Materyal güncellendi.' : 'Materyal eklendi.');
     draw();
   } catch (e) { err.textContent = e.message; }
@@ -360,7 +586,7 @@ async function saveItem(form) {
 
 async function delItem(id) {
   const x = s.items.find(i => i.id === id);
-  if (!x || !confirm(`"${x.title}" silinsin mi? Ekibin ilerleme kayıtları da anlamını yitirir.`)) return;
+  if (!x || !confirm(`"${x.title}" silinsin mi?`)) return;
   const { error } = await supabase.from('academy_items').delete().eq('id', id);
   if (error) { toast(trError(error)); return; }
   if (x.file_path) await supabase.storage.from('akademi').remove([x.file_path]);
@@ -370,13 +596,13 @@ async function delItem(id) {
 
 async function quizAi(btn) {
   const form = btn.closest('form');
-  const id = form.dataset.id, x = s.items.find(i => i.id === id);
+  const x = s.items.find(i => i.id === form.dataset.id);
   let text = [form.elements.title.value, form.elements.summary.value, form.elements.body.value].join('\n\n');
   const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Hazırlanıyor…';
   try {
     if (x?.kind === 'pdf' && x.file_path && text.trim().length < 400) {
-      if (!pdfLib) { pdfLib = await import('../vendor/pdfjs/pdf.min.mjs'); pdfLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href; }
-      const doc = await pdfLib.getDocument({ url: await signed(x.file_path) }).promise;
+      const lib = await loadPdfLib();
+      const doc = await lib.getDocument({ data: new Uint8Array(await (await fileBlob(x)).arrayBuffer()) }).promise;
       for (let i = 1; i <= Math.min(doc.numPages, 15) && text.length < 9000; i++) {
         const tc = await (await doc.getPage(i)).getTextContent();
         text += '\n' + tc.items.map(t => t.str).join(' ');
@@ -395,8 +621,9 @@ async function quizAi(btn) {
 function onInput(e) {
   if (e.target.dataset.lib === 'q') {
     s.q = e.target.value;
-    const box = el.querySelector('#lib-list');
-    if (box) box.innerHTML = filterItems(published(), { category: s.cat, q: s.q }).map(x => itemCard(x, libDone())).join('') || '<p class="muted">Aramana uyan materyal yok.</p>';
+    const pos = e.target.selectionStart;
+    draw();
+    const inp = el.querySelector('#lib-q'); if (inp) { inp.focus(); inp.setSelectionRange(pos, pos); }
   }
 }
 
@@ -500,15 +727,23 @@ function onClick(e) {
   if (les) { lessonDialog(les.dataset.lesson); return; }
   const op = e.target.closest('[data-open]');
   if (op) { openItem(op.dataset.open); return; }
-  const cat = e.target.closest('[data-cat]');
-  if (cat) { s.cat = cat.dataset.cat; draw(); return; }
+  const fo = e.target.closest('[data-folder]');
+  if (fo) { s.folder = fo.dataset.folder || null; s.q = ''; history.replaceState(null, '', `#/akademi?tab=kutuphane${s.folder ? '&klasor=' + s.folder : ''}`); draw(); return; }
+  const rate = e.target.closest('[data-rate]');
+  if (rate) { const a = el.querySelector('#lib-view audio'); if (a) a.playbackRate = +rate.dataset.rate; rate.parentElement.querySelectorAll('[data-rate]').forEach(b => b.setAttribute('aria-pressed', b === rate)); return; }
   const act = e.target.closest('[data-act]')?.dataset.act;
   const aid = e.target.closest('[data-act]')?.dataset.id;
   if (act === 'item-new') { itemForm(); return; }
   if (act === 'item-edit') { itemForm(s.items.find(i => i.id === aid)); return; }
   if (act === 'item-del') { delItem(aid); return; }
   if (act === 'quiz-ai') { quizAi(e.target.closest('[data-act]')); return; }
-  if (act === 'close') { el.querySelector('#a-dialog').close(); draw(); }
+  if (act === 'folder-new') { folderForm(); return; }
+  if (act === 'folder-edit') { folderForm(s.folders.find(f => f.id === aid)); return; }
+  if (act === 'folder-del') { delFolder(aid); return; }
+  if (act === 'lib-tab') { openInTab(s.items.find(i => i.id === aid)); return; }
+  if (act === 'lib-dl') { downloadItem(s.items.find(i => i.id === aid)); return; }
+  if (act === 'rec') { toggleRec(e.target.closest('[data-act]')); return; }
+  if (act === 'close') { stopRec(true); el.querySelector('#a-dialog').close(); draw(); }
 }
 
 async function onChange(e) {
@@ -531,6 +766,7 @@ async function onChange(e) {
 async function onSubmit(e) {
   e.preventDefault();
   const form = e.target;
+  if (form.dataset.form === 'folder') { const b = form.querySelector('[type=submit]'); b.disabled = true; await saveFolder(form); b.disabled = false; return; }
   if (form.dataset.form === 'item') { const b = form.querySelector('[type=submit]'); b.disabled = true; await saveItem(form); b.disabled = false; return; }
   if (form.dataset.form === 'lib-done') { const b = form.querySelector('[type=submit]'); b.disabled = true; await submitLib(form); if (b.isConnected) b.disabled = false; return; }
   if (form.dataset.form !== 'quiz') return;

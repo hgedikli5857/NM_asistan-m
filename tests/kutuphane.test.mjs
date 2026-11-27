@@ -35,3 +35,31 @@ assert.equal(normalizeQuiz([{ q: 'x', o: ['a'], a: 0 }]), null);
 const esc = s => String(s).replace(/</g, '&lt;');
 assert.equal(renderText('## Başlık\n\n- bir\n- iki\n\nParagraf <b>', esc), '<h3>Başlık</h3><ul><li>bir</li><li>iki</li></ul><p>Paragraf &lt;b></p>');
 console.log('kütüphane: tamam');
+
+// Klasör ağacı, Drive, ses ve belge
+import('../js/akademi/library.js').then(m => {
+  const F = [{ id: 'a', parent_id: null, name: 'Ürünler', sort: 1, category: 'urunler' }, { id: 'b', parent_id: 'a', name: 'Patch', sort: 1, category: 'urunler' },
+    { id: 'c', parent_id: 'b', name: 'Kullanım', sort: 1, category: 'urunler' }, { id: 'd', parent_id: null, name: 'Şirket', sort: 2, category: 'sirket' }];
+  assert.deepEqual(m.childrenOf(F).map(f => f.id), ['a', 'd']);
+  assert.deepEqual(m.folderPath(F, 'c').map(f => f.name), ['Ürünler', 'Patch', 'Kullanım']);
+  assert.deepEqual([...m.descendantIds(F, 'a')].sort(), ['a', 'b', 'c']);
+  assert.deepEqual(m.flatTree(F).map(f => `${f.depth}${f.id}`), ['0a', '1b', '2c', '0d']);
+  assert.equal(m.rootCategory(F, 'c'), 'urunler');
+  const items = [{ id: '1', folder_id: 'c' }, { id: '2', folder_id: 'a' }, { id: '3', folder_id: 'd' }];
+  assert.deepEqual(m.folderStats(F, items, 'a', new Set(['lib:1'])), { items: 2, done: 1, sub: 1 });
+  assert.equal(m.driveInfo('https://drive.google.com/file/d/XyZ/view?usp=sharing').embed, 'https://drive.google.com/file/d/XyZ/preview');
+  assert.equal(m.driveInfo('https://drive.google.com/open?id=XyZ').type, 'file');
+  assert.equal(m.driveInfo('https://drive.google.com/drive/folders/F1?usp=sharing').type, 'folder');
+  assert.equal(m.driveInfo('https://docs.google.com/document/d/D1/edit').embed, 'https://docs.google.com/document/d/D1/preview');
+  assert.equal(m.driveInfo('https://docs.google.com/spreadsheets/d/S1/edit#gid=0').type, 'sheet');
+  assert.equal(m.driveInfo('https://youtube.com/x'), null);
+  assert.equal(m.kindFromFile({ type: 'audio/mpeg', name: 'a.mp3' }), 'ses');
+  assert.equal(m.kindFromFile({ type: '', name: 'Plan.PPTX' }), 'belge');
+  assert.equal(m.mimeOf('rapor.HTML'), 'text/html');
+  assert.equal(m.mimeOf('a.docx'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  assert.equal(m.mimeOf('a.bilinmez', 'x/y'), 'x/y');
+  const doc = m.textDocHtml('Başlık <x>', '- bir', s => String(s).replace(/</g, '&lt;'));
+  assert.ok(doc.startsWith('<!DOCTYPE html>') && doc.includes('<h1>Başlık &lt;x></h1>') && doc.includes('<li>bir</li>'));
+  assert.equal(m.DEFAULT_FOLDERS.length, 7);
+  console.log('klasör/drive/ses: tamam');
+});

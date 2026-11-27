@@ -17,9 +17,26 @@ export const KINDS = {
   video: { label: 'Video', icon: 'ti-player-play', accept: 'video/mp4,video/quicktime,video/webm' },
   html: { label: 'HTML sayfa', icon: 'ti-file-code', accept: 'text/html,.html,.htm' },
   gorsel: { label: 'Görsel', icon: 'ti-photo', accept: 'image/jpeg,image/png,image/webp' },
+  ses: { label: 'Ses kaydı', icon: 'ti-microphone', accept: 'audio/*,.mp3,.m4a,.wav,.ogg,.webm' },
+  belge: { label: 'Word / Excel / PowerPoint', icon: 'ti-file-type-doc', accept: '.doc,.docx,.xls,.xlsx,.ppt,.pptx' },
+  drive: { label: 'Google Drive', icon: 'ti-brand-google-drive', accept: '' },
   link: { label: 'Bağlantı', icon: 'ti-link', accept: '' },
   yazi: { label: 'Yazı', icon: 'ti-file-text', accept: '' }
 };
+export const FILE_KINDS = ['pdf', 'video', 'html', 'gorsel', 'ses', 'belge'];
+export const URL_KINDS = ['link', 'drive'];
+
+export const FOLDER_COLORS = { gold: 'Altın', navy: 'Lacivert', green: 'Yeşil', blue: 'Mavi', purple: 'Mor', red: 'Kırmızı', gray: 'Gri' };
+// İlk açılışta oluşturulan ana klasörler (kategorilerden)
+export const DEFAULT_FOLDERS = [
+  { name: 'Yeni başlayanlar', category: 'baslangic', color: 'gold', sort: 10 },
+  { name: 'Ürünler', category: 'urunler', color: 'green', sort: 20 },
+  { name: 'Şirket', category: 'sirket', color: 'navy', sort: 30 },
+  { name: 'Kazanç planı', category: 'kazanc', color: 'purple', sort: 40 },
+  { name: 'Satış ve iletişim', category: 'satis', color: 'blue', sort: 50 },
+  { name: 'Liderlik', category: 'liderlik', color: 'red', sort: 60 },
+  { name: 'Kişisel gelişim', category: 'gelisim', color: 'gray', sort: 70 }
+];
 export const LEVELS = { baslangic: 'Başlangıç', orta: 'Orta', ileri: 'İleri' };
 
 export const DISCLAIMERS = {
@@ -36,6 +53,8 @@ export function kindFromFile(file) {
   if (t.startsWith('video/')) return 'video';
   if (t === 'text/html' || /\.html?$/.test(n)) return 'html';
   if (t.startsWith('image/')) return 'gorsel';
+  if (t.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac)$/.test(n)) return 'ses';
+  if (/\.(docx?|xlsx?|pptx?)$/.test(n) || /msword|officedocument|ms-excel|ms-powerpoint/.test(t)) return 'belge';
   return null;
 }
 
@@ -51,8 +70,78 @@ export function embedUrl(url) {
     if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}`;
   }
   if (h === 'vimeo.com') { const m = u.pathname.match(/^\/(\d+)/); if (m) return `https://player.vimeo.com/video/${m[1]}`; }
-  if (h === 'drive.google.com') { const m = u.pathname.match(/\/file\/d\/([\w-]+)/); if (m) return `https://drive.google.com/file/d/${m[1]}/preview`; }
+  const d = driveInfo(url);
+  if (d) return d.embed;
+  if (h === 'open.spotify.com') { const m = u.pathname.match(/^\/(episode|track|show|playlist)\/(\w+)/); if (m) return `https://open.spotify.com/embed/${m[1]}/${m[2]}`; }
   return null;
+}
+
+// Google Drive / Dokümanlar bağlantısını çöz: dosya, doküman, tablo, sunum, form ya da klasör
+export function driveInfo(url) {
+  let u;
+  try { u = new URL(url); } catch { return null; }
+  const h = u.hostname.replace(/^www\./, '');
+  if (h === 'drive.google.com') {
+    let m = u.pathname.match(/\/file\/d\/([\w-]+)/) || (u.pathname === '/open' && u.searchParams.get('id') && [0, u.searchParams.get('id')]);
+    if (m) return { type: 'file', id: m[1], embed: `https://drive.google.com/file/d/${m[1]}/preview`, open: `https://drive.google.com/file/d/${m[1]}/view` };
+    m = u.pathname.match(/\/folders\/([\w-]+)/);
+    if (m) return { type: 'folder', id: m[1], embed: `https://drive.google.com/embeddedfolderview?id=${m[1]}#list`, open: `https://drive.google.com/drive/folders/${m[1]}` };
+  }
+  if (h === 'docs.google.com') {
+    const m = u.pathname.match(/^\/(document|spreadsheets|presentation|forms)\/d\/(e\/)?([\w-]+)/);
+    if (m) {
+      const type = { document: 'doc', spreadsheets: 'sheet', presentation: 'slide', forms: 'form' }[m[1]];
+      const base = `https://docs.google.com/${m[1]}/d/${m[2] || ''}${m[3]}`;
+      const embed = type === 'slide' ? `${base}/embed` : type === 'form' ? `${base}/viewform?embedded=true` : `${base}/preview`;
+      return { type, id: m[3], embed, open: type === 'form' ? `${base}/viewform` : `${base}/edit` };
+    }
+  }
+  return null;
+}
+
+// Klasör ağacı yardımcıları
+export function childrenOf(folders, parentId = null) {
+  return folders.filter(f => (f.parent_id || null) === (parentId || null)).sort((a, b) => (a.sort - b.sort) || a.name.localeCompare(b.name, 'tr'));
+}
+export function folderPath(folders, id) {
+  const out = []; let cur = folders.find(f => f.id === id), guard = 0;
+  while (cur && guard++ < 20) { out.unshift(cur); cur = folders.find(f => f.id === cur.parent_id); }
+  return out;
+}
+export function descendantIds(folders, id) {
+  const out = new Set([id]); let added = true;
+  while (added) { added = false; for (const f of folders) if (f.parent_id && out.has(f.parent_id) && !out.has(f.id)) { out.add(f.id); added = true; } }
+  return out;
+}
+// Seçim kutusu için girintili liste
+export function flatTree(folders, parentId = null, depth = 0, out = []) {
+  for (const f of childrenOf(folders, parentId)) { out.push({ ...f, depth }); flatTree(folders, f.id, depth + 1, out); }
+  return out;
+}
+// Klasörün (alt klasörler dahil) materyal sayısı ve tamamlanan
+export function folderStats(folders, items, id, done = new Set()) {
+  const ids = descendantIds(folders, id);
+  const list = items.filter(x => x.folder_id && ids.has(x.folder_id));
+  return { items: list.length, done: list.filter(x => done.has(progressId(x.id))).length, sub: childrenOf(folders, id).length };
+}
+export const rootCategory = (folders, id) => folderPath(folders, id)[0]?.category || 'diger';
+
+// Dosya uzantısından doğru içerik türü (tarayıcıda / ofis uygulamasında doğru açılsın)
+const EXT_MIME = { pdf: 'application/pdf', html: 'text/html', htm: 'text/html', txt: 'text/plain', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+export function mimeOf(name, fallback = 'application/octet-stream') {
+  const ext = String(name || '').toLowerCase().split('.').pop();
+  return EXT_MIME[ext] || fallback;
+}
+
+// Yazı materyalini bağımsız, okunur bir HTML belgesine çevir (tarayıcıda aç / Word'e indir)
+export function textDocHtml(title, body, esc) {
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+<style>body{font-family:Georgia,'Times New Roman',serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.7;color:#1b2a4a}h1{font-size:28px;border-bottom:3px solid #c9a24a;padding-bottom:8px}h3{margin-top:28px}li{margin:4px 0}</style>
+</head><body><h1>${esc(title)}</h1>${renderText(body, esc)}</body></html>`;
 }
 
 // Liste sıralaması: zorunlu önce, sonra seviye, sıra numarası, başlık
