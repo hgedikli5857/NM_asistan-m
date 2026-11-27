@@ -37,7 +37,12 @@ async function pixabay(key: string, q: string, video: boolean, page: number) {
   const qs = new URLSearchParams({ key, q, lang: 'tr', per_page: '18', page: String(page), safesearch: 'true' });
   if (!video) { qs.set('orientation', 'vertical'); qs.set('image_type', 'photo'); }
   const r = await fetch(`https://pixabay.com/api/${video ? 'videos/' : ''}?${qs}`);
-  if (!r.ok) throw new Error(r.status === 429 ? 'Çok fazla arama yapıldı; bir dakika sonra tekrar dene.' : `Pixabay HTTP ${r.status}`);
+  if (!r.ok) {
+    const msg = (await r.text().catch(() => '')).slice(0, 200);
+    if (r.status === 429) throw new Error('Çok fazla arama yapıldı; bir dakika sonra tekrar dene.');
+    if (/api key/i.test(msg)) throw new Error('Pixabay anahtarı geçersiz. Supabase Secrets\'taki PIXABAY_API_KEY değerini kontrol et: yalnızca anahtarın kendisi olmalı (boşluk, tırnak ya da "key=" olmadan).');
+    throw new Error(`Pixabay HTTP ${r.status}: ${msg}`);
+  }
   const data = await r.json();
   const hits = data.hits || [];
   const items = video
@@ -66,7 +71,7 @@ Deno.serve(async (req: Request) => {
     if (!user) return json({ error: 'unauthorized' }, 401);
 
     const pexKey = Deno.env.get('PEXELS_API_KEY');
-    const pixKey = Deno.env.get('PIXABAY_API_KEY');
+    const pixKey = (Deno.env.get('PIXABAY_API_KEY') || '').trim().replace(/^key=/i, '').replace(/^["']|["']$/g, '');
     const gemKey = Deno.env.get('GEMINI_API_KEY');
     const body = await req.json().catch(() => ({}));
 
