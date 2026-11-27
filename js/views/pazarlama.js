@@ -7,7 +7,8 @@ import { aiChat, aiAvailable, ETHICS, extractJSON } from '../ai/client.js';
 import { TEMPLATES, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
   reelFindings, aiStoryboardPrompt, parseAiStoryboard, suggestCaption, reelSupport, drawReelFrame, previewTime,
   loadClip, releaseClips, loadReelFonts, renderReel, reelFileName, blankStoryboard, parseScript, aiScriptPrompt, parseAiScript,
-  fidelity, reelTotal, REEL_SCHEMA, MIN_SCENES, MAX_SCENES, SEC_MIN, SEC_MAX, SCENE_LEN } from '../pazarlama/reels.js';
+  fidelity, reelTotal, REEL_SCHEMA, MIN_SCENES, MAX_SCENES, SEC_MIN, SEC_MAX, SCENE_LEN, loadOutro, appendOutro, storyboardText } from '../pazarlama/reels.js';
+import { planDays, weeklyQuota, buildHashtags, toolBrief, aiTopicsPrompt, TOOLS, DEFAULT_TIME, PLAN_FORMATS } from '../pazarlama/plan.js';
 import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
   shrinkPhoto, shrinkLogo, imageFromData } from '../pazarlama/karusel.js';
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'fikir', label: 'Fikirler', icon: 'ti-bulb' },
   { id: 'reels', label: 'Reels', icon: 'ti-movie' },
   { id: 'karusel', label: 'Karusel', icon: 'ti-carousel-horizontal' },
+  { id: 'gonderi', label: 'Gönderi', icon: 'ti-photo' },
   { id: 'form', label: 'Aday formu', icon: 'ti-forms' },
   { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram' }
 ];
@@ -60,20 +62,270 @@ export async function renderPazarlama(target, context) {
   for (const r of [posts, forms, webLeads, gLeads]) if (r.error) throw r.error;
   s.posts = posts.data; s.forms = forms.data; s.webLeads = webLeads.data;
   s.gLeads = gLeads.data; s.gform = gStat.error ? null : gStat.data; s.gToken = null;
+  const br = await supabase.from('content_brand').select('*').maybeSingle();
+  s.brand = br.data || { post_time: DEFAULT_TIME };
+  initGon();
   draw();
+  const uret = new URLSearchParams(location.hash.split('?')[1] || '').get('uret');
+  if (uret) produce(uret);
 }
 
 function draw() {
   el.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === s.tab));
-  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, reels: viewReels, karusel: viewKarusel, form: viewForm, instagram: viewInstagram }[s.tab]();
+  el.querySelector('#p-body').innerHTML = { takvim: viewCalendar, fikir: viewIdeas, reels: viewReels, karusel: viewKarusel, gonderi: viewGonderi, form: viewForm, instagram: viewInstagram }[s.tab]();
   if (s.tab === 'reels') afterReelDraw();
+  if (s.tab === 'gonderi') gPaint();
   if (s.tab === 'karusel') kAfterDraw();
 }
 
 // ====================================================================
 // İçerik takvimi: önümüzdeki 14 gün + sütun dengesi
+// ====================================================================
+// İçerik fabrikası: 30 günlük plan, marka kiti, "Oluştur"
+const pubUrl = path => (path ? supabase.storage.from('icerik').getPublicUrl(path).data.publicUrl : '');
+const hhmm = t => String(t || DEFAULT_TIME).slice(0, 5);
+const TIME_OPTS = ['07:40', '07:45', '07:50', '08:00', '08:15', '08:30', '12:30', '19:30', '20:30', '21:00'];
+
+function factoryCard() {
+  const quota = weeklyQuota(s.posts, { days: 28 });
+  const lbl = w => new Date(w.week + 'T12:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  const cell = (n, goal = 3) => `<span class="${n >= goal ? 'q-ok' : 'q-miss'}">${n}/${goal}</span>`;
+  const futureAuto = s.posts.filter(p => p.auto_planned && p.status === 'fikir' && p.planned_for >= todayISO()).length;
+  return `<section class="card fab-card">
+    <h2><i class="ti ti-building-factory-2" aria-hidden="true"></i> İçerik fabrikası · 30 günlük plan</h2>
+    <p class="small muted">Haftada 3 Reels, 3 Karusel, 3 Gönderi. Pazar: değerlendirme ve gelecek haftanın konularını onaylama günü. Konular değiştirilebilir; bir içeriğe dokunup düzenle.</p>
+    <div class="table-wrap"><table class="quota"><thead><tr><th>Hafta</th><th>Reels</th><th>Karusel</th><th>Gönderi</th><th>Hazır</th></tr></thead>
+      <tbody>${quota.map(w => `<tr><td>${esc(lbl(w))}</td><td>${cell(w.reels)}</td><td>${cell(w.karusel)}</td><td>${cell(w.gonderi)}</td><td>${w.hazir}/${w.reels + w.karusel + w.gonderi}</td></tr>`).join('')}</tbody></table></div>
+    <div class="quick">
+      <button class="btn btn-gold" data-act="plan-make"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 30 günlük planı oluştur / tamamla</button>
+      ${s.ai && futureAuto ? `<button class="btn btn-ghost" data-act="plan-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> Konuları AI ile yenile (${futureAuto})</button>` : ''}
+    </div>
+    ${brandKitHtml()}
+  </section>`;
+}
+
+function brandKitHtml() {
+  const b = s.brand || {};
+  return `<details class="brand-kit" ${b.logo_video_path ? '' : 'open'}><summary><i class="ti ti-badge" aria-hidden="true"></i> Marka kiti: logo, logo videosu, etiketler, paylaşım saati</summary>
+    <form data-form="brand" novalidate>
+      <div class="form-2">
+        <div class="field"><label for="b-handle">Instagram hesabı</label><input id="b-handle" name="handle" maxlength="31" value="${esc(b.handle || '')}" placeholder="@h.gedikli.official" autocapitalize="off"></div>
+        <div class="field"><label for="b-kw">Yorum anahtar kelimesi</label><input id="b-kw" name="kw" maxlength="16" value="${esc(b.kw || '')}" placeholder="GİRİŞİM"></div>
+      </div>
+      <div class="form-2">
+        <div class="field"><label for="b-tags">Sabit hashtagler (her paylaşıma eklenir)</label><input id="b-tags" name="hashtags" maxlength="300" value="${esc(b.hashtags || '')}" placeholder="#hgedikli #birlikteburdayiz"></div>
+        <div class="field"><label for="b-time">Varsayılan paylaşım saati</label><select id="b-time" name="post_time">${TIME_OPTS.map(t => `<option value="${t}" ${t === hhmm(b.post_time) ? 'selected' : ''}>${t}${t === '07:45' ? ' (önerilen)' : ''}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-2">
+        <div class="field"><span class="label">Logo (PNG, şeffaf)</span>
+          <div class="quick">${b.logo_path ? `<img src="${esc(pubUrl(b.logo_path))}" alt="Logo" class="brand-thumb">` : ''}
+          <label class="btn btn-ghost" for="b-logo"><i class="ti ti-upload" aria-hidden="true"></i> ${b.logo_path ? 'Değiştir' : 'Logo yükle'}</label>
+          <input type="file" id="b-logo" accept="image/png,image/webp,image/jpeg" class="sr-only"></div></div>
+        <div class="field"><span class="label">Logo animasyon videosu (videoların sonuna eklenir)</span>
+          <div class="quick">${b.logo_video_path ? `<video src="${esc(pubUrl(b.logo_video_path))}" class="brand-thumb" muted playsinline loop autoplay></video>` : ''}
+          <label class="btn btn-ghost" for="b-video"><i class="ti ti-video-plus" aria-hidden="true"></i> ${b.logo_video_path ? 'Değiştir' : 'Logo videosu yükle'}</label>
+          <input type="file" id="b-video" accept="video/mp4,video/quicktime,video/webm" class="sr-only"></div>
+          <span class="small muted">En fazla 50 MB; ilk 8 saniyesi kullanılır.</span></div>
+      </div>
+      <p class="error" id="b-error" role="alert"></p>
+      <button class="btn btn-primary" type="submit">Marka kitini kaydet</button>
+    </form></details>`;
+}
+
+async function saveBrandKit(form) {
+  const f = n => form.elements.namedItem(n).value.trim();
+  const row = { org_id: ctx.org.id, handle: normalizeHandle(f('handle')) || null, kw: f('kw') ? normalizeKeyword(f('kw')) : null,
+    hashtags: f('hashtags') || null, post_time: f('post_time') || DEFAULT_TIME, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from('content_brand').upsert({ owner_id: ctx.user.id, ...row }).select().single();
+  if (error) { form.querySelector('#b-error').textContent = trError(error); return; }
+  s.brand = data; outroCache = null;
+  // Reels kapanışındaki hesap ve kelime de buradan gelsin
+  s.reel.sb = normalizeStoryboard({ ...s.reel.sb, handle: data.handle || s.reel.sb.handle, kw: data.kw || s.reel.sb.kw });
+  saveBrand(s.reel.sb);
+  toast('Marka kiti kaydedildi.'); draw();
+}
+
+// Dosyayı kullanıcının klasörüne yükle → { path, url, type, name, size, at }
+async function uploadMedia(fileOrBlob, { name = 'dosya', folder = 'icerik', ext = null, upsertPath = null } = {}) {
+  const type = fileOrBlob.type || 'application/octet-stream';
+  if (fileOrBlob.size > 50 * 1048576) throw new Error('Dosya 50 MB\'tan büyük. Daha düşük kalitede dışa aktarıp tekrar dene.');
+  const e = ext || ({ 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[type]) || 'bin';
+  const path = upsertPath || `${ctx.user.id}/${folder}/${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${e}`;
+  const { error } = await supabase.storage.from('icerik').upload(path, fileOrBlob, { contentType: type, upsert: !!upsertPath, cacheControl: '3600' });
+  if (error) throw new Error(trError(error));
+  return { path, url: pubUrl(path) + (upsertPath ? `?v=${Date.now()}` : ''), type, name: String(name).slice(0, 80), size: fileOrBlob.size, at: new Date().toISOString() };
+}
+
+async function brandFile(kind, file) {
+  if (!file) return;
+  const ok = kind === 'logo' ? /^image\//.test(file.type) : /^video\//.test(file.type);
+  if (!ok) { toast(kind === 'logo' ? 'Logo için PNG ya da JPEG seç.' : 'Logo videosu için MP4 ya da MOV seç.'); return; }
+  toast('Yükleniyor…');
+  try {
+    const ext = kind === 'logo' ? (file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg') : (file.type === 'video/quicktime' ? 'mov' : file.type === 'video/webm' ? 'webm' : 'mp4');
+    const m = await uploadMedia(file, { name: file.name, upsertPath: `${ctx.user.id}/brand/${kind === 'logo' ? 'logo' : 'logo-video'}.${ext}` });
+    const col = kind === 'logo' ? 'logo_path' : 'logo_video_path';
+    const { data, error } = await supabase.from('content_brand').upsert({ owner_id: ctx.user.id, org_id: ctx.org.id, ...(s.brand.owner_id ? {} : { post_time: s.brand.post_time || DEFAULT_TIME }), [col]: m.path, updated_at: new Date().toISOString() }).select().single();
+    if (error) throw new Error(trError(error));
+    s.brand = data; outroCache = null; logoCache = null;
+    toast(kind === 'logo' ? 'Logo kaydedildi.' : 'Logo videosu kaydedildi; Reels\'lerin sonuna eklenecek.');
+    draw();
+  } catch (e) { toast(e.message); }
+}
+
+let outroCache = null, logoCache = null;
+async function getOutro() {
+  if (!s.brand?.logo_video_path) return null;
+  if (!outroCache) outroCache = loadOutro(pubUrl(s.brand.logo_video_path) + `?v=${encodeURIComponent(s.brand.updated_at || '')}`).catch(e => { outroCache = null; throw e; });
+  return outroCache;
+}
+async function getLogo() {
+  if (!s.brand?.logo_path) return s.kar?.logo || null;
+  if (!logoCache) {
+    logoCache = fetch(pubUrl(s.brand.logo_path) + `?v=${encodeURIComponent(s.brand.updated_at || '')}`).then(r => r.blob())
+      .then(b => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = URL.createObjectURL(b); }))
+      .catch(() => { logoCache = null; return s.kar?.logo || null; });
+  }
+  return logoCache;
+}
+
+async function planMake(btn) {
+  const add = planDays({ start: new Date(), days: 30, existing: s.posts, time: hhmm(s.brand?.post_time) });
+  if (!add.length) { toast('Önümüzdeki 30 günün planı zaten tam.'); return; }
+  const c = { reels: 0, karusel: 0, gonderi: 0 }; add.forEach(x => c[x.format]++);
+  if (!confirm(`${add.length} içerik takvime eklenecek (Reels ${c.reels}, Karusel ${c.karusel}, Gönderi ${c.gonderi}). Konuları sonra değiştirebilirsin. Devam?`)) return;
+  btn.disabled = true;
+  const { data, error } = await supabase.from('content_posts').insert(add.map(x => ({ ...x, org_id: ctx.org.id }))).select();
+  btn.disabled = false;
+  if (error) { toast(trError(error)); return; }
+  s.posts = [...s.posts, ...data].sort((a, b) => (a.planned_for < b.planned_for ? -1 : a.planned_for > b.planned_for ? 1 : 0));
+  draw(); toast(`${data.length} içerik planlandı. Bugünün içeriği Ajanda ve Panel'de "Oluştur" ile açılır.`);
+}
+
+async function planAi(btn) {
+  const items = s.posts.filter(p => p.auto_planned && p.status === 'fikir' && p.planned_for >= todayISO()).slice(0, 45);
+  if (!items.length) return;
+  if (!confirm(`${items.length} içeriğin konusu AI ile yenilenecek (yalnızca henüz başlanmamış ve otomatik planlananlar). Devam?`)) return;
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
+  try {
+    const text = await aiChat({ maxTokens: 2000, messages: [{ role: 'user', content: aiTopicsPrompt(items) }] });
+    const topics = (extractJSON(text)?.topics || []).map(t => String(t || '').trim().slice(0, 120));
+    let n = 0;
+    for (let i = 0; i < items.length; i++) {
+      const t = topics[i];
+      if (!t || checkMessage(t).some(x => x.level === 'yuksek')) continue;
+      const { data, error } = await supabase.from('content_posts').update({ topic: t }).eq('id', items[i].id).select().single();
+      if (!error) { s.posts = s.posts.map(x => (x.id === data.id ? data : x)); n++; }
+    }
+    draw(); toast(`${n} konu yenilendi.`);
+  } catch (e) { toast('AI: ' + e.message); btn.disabled = false; btn.innerHTML = old; }
+}
+
+// Takvimden, Ajanda'dan ya da Panel'den "Oluştur": ilgili stüdyoyu konu dolu açar
+function produce(id) {
+  const p = s.posts.find(x => x.id === id);
+  if (!p) { toast('İçerik bulunamadı (30 günden eski olabilir).'); return; }
+  const dlg = el.querySelector('#p-dialog'); if (dlg?.open) dlg.close();
+  if (p.format === 'reels') {
+    if (p.storyboard) reelOpen(id);
+    else {
+      reelNew(true);
+      Object.assign(s.reel, { postId: p.id, topic: p.topic, step: 'senaryo' });
+      reelLoadPost(p);
+      s.tab = 'reels'; history.replaceState(null, '', '#/pazarlama?tab=reels'); draw();
+    }
+    if (s.reel.mode === 'ai' && s.ai && !p.storyboard) toast('Konu hazır. "AI ile senaryo yaz"a dokun ya da "Benim metnim"e geç.');
+    return;
+  }
+  if (p.format === 'karusel') {
+    if (p.carousel) { kOpen(id); return; }
+    kNew();
+    s.kar.deck.topic = p.topic; s.kar.postId = p.id; s.kar.sample = true;
+    s.tab = 'karusel'; history.replaceState(null, '', '#/pazarlama?tab=karusel'); draw();
+    toast('Konu karusel stüdyosuna aktarıldı.');
+    return;
+  }
+  if (p.format === 'gonderi') { gonOpen(p); return; }
+  postDialog(p);
+}
+
+// Araç seçimi + dış araç akışı (Reels ve Gönderi için ortak)
+function toolPicker(scope, tool) {
+  return `<div class="tool-pick" role="radiogroup" aria-label="Üretim aracı">${Object.entries(TOOLS).map(([k, t]) =>
+    `<button type="button" role="radio" aria-checked="${k === tool}" class="chip" data-act="tool" data-scope="${scope}" data-tool="${k}"><i class="ti ${t.icon}" aria-hidden="true"></i>${esc(t.label)}</button>`).join('')}</div>`;
+}
+function externalHtml(scope, { tool, brief, media, accept }) {
+  const t = TOOLS[tool];
+  return `<div class="ext-tool">
+    <ol class="small">
+      ${t.url ? `<li><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)} uygulamasını aç <i class="ti ti-external-link" aria-hidden="true"></i></a>, aşağıdaki brief'i kullanarak üret.</li>` : '<li>İçeriği istediğin araçta üret; aşağıdaki brief yardımcı olur.</li>'}
+      <li>Bitmiş dosyayı telefonuna indir.</li>
+      <li>"Bitmiş dosyayı yükle" ile buraya ekle.</li>
+    </ol>
+    <div class="field"><label for="${scope}-brief">Brief (araca yapıştır)</label><textarea id="${scope}-brief" rows="6" readonly>${esc(brief)}</textarea></div>
+    <div class="quick">
+      <button type="button" class="btn btn-ghost" data-copy="${esc(brief)}"><i class="ti ti-copy" aria-hidden="true"></i> Brief'i kopyala</button>
+      <label class="btn btn-primary" for="${scope}-upload"><i class="ti ti-upload" aria-hidden="true"></i> Bitmiş dosyayı yükle</label>
+      <input type="file" id="${scope}-upload" data-media="${scope}" accept="${accept}" class="sr-only">
+    </div>
+    ${media ? `<p class="small muted"><i class="ti ti-check" aria-hidden="true"></i> Yüklendi: ${esc(media.name)} · ${(media.size / 1048576).toFixed(1)} MB</p>` : ''}
+  </div>`;
+}
+
+// Açıklama + hashtag kutusu (Reels ve Gönderi için ortak)
+function capBoxHtml(scope, { caption, tags }) {
+  return `<fieldset class="reel-scene cap-box"><legend>Paylaşım metni</legend>
+    <div class="field"><label for="${scope}-cap">Açıklama</label><textarea id="${scope}-cap" data-cap="${scope}" rows="6" maxlength="2000">${esc(caption || '')}</textarea></div>
+    <div class="field"><label for="${scope}-tags">Hashtagler</label><input id="${scope}-tags" data-tags="${scope}" maxlength="600" value="${esc(tags || '')}"></div>
+    <div id="${scope}-capcheck"></div>
+    <div class="quick">
+      ${s.ai ? `<button type="button" class="btn btn-ghost" data-act="cap-ai" data-scope="${scope}"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile açıklama yaz</button>` : ''}
+      <button type="button" class="btn btn-ghost" data-act="cap-tags" data-scope="${scope}"><i class="ti ti-hash" aria-hidden="true"></i> Etiket öner</button>
+      <button type="button" class="btn btn-ghost" data-act="cap-copy" data-scope="${scope}"><i class="ti ti-copy" aria-hidden="true"></i> Açıklama + etiketleri kopyala</button>
+    </div>
+  </fieldset>`;
+}
+function capState(scope) { return scope === 'reels' ? s.reel : s.gon; }
+function capCheck(scope) {
+  const st = capState(scope), box = el.querySelector(`#${scope}-capcheck`);
+  if (!box) return;
+  const f = checkMessage(`${st.caption || ''}\n${st.tags || ''}`);
+  box.innerHTML = f.length ? `<div class="check-box warn">${f.map(x => `<p><strong>${esc(x.cat)}:</strong> "${x.hits.map(esc).join('", "')}" — ${esc(x.tip)}</p>`).join('')}</div>` : '';
+}
+const fullCaption = st => [String(st.caption || '').trim(), String(st.tags || '').trim()].filter(Boolean).join('\n\n');
+async function capAi(scope, btn) {
+  const st = capState(scope);
+  const post = s.posts.find(p => p.id === st.postId);
+  const topic = st.topic || post?.topic || '';
+  const pillar = PILLARS.find(x => x.id === (post?.pillar || st.pillar || 'yasam'));
+  const body = scope === 'reels' ? storyboardText(st.sb).replace(/\n+/g, ' / ') : '';
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Yazılıyor…';
+  try {
+    const text = await aiChat({ maxTokens: 600, messages: [{ role: 'user', content:
+      `Instagram ${scope === 'reels' ? 'Reels' : 'gönderi'} açıklaması yaz.
+Konu: ${topic}
+İçerik sütunu: ${pillar?.label} (${pillar?.hint})
+${body ? 'Videodaki yazılar: ' + body : ''}
+Marka sesi: samimi ama profesyonel, gerçekçi, abartısız; sağlık ve kişisel gelişim alanında bir girişimci.
+${ETHICS} Satış çağrısı yapma.
+${s.brand?.kw ? `Sonunda yorumlara "${s.brand.kw}" yazmaya davet et.` : 'Sonunda bir etkileşim sorusu olsun.'}
+Kurallar: 50-110 kelime, en fazla 2 emoji, HASHTAG YAZMA. Sadece açıklama metnini yaz.` }] });
+    st.caption = text.replace(/(^|\s)#\S+/g, '').trim().slice(0, 2000);
+    const ta = el.querySelector(`#${scope}-cap`); if (ta) ta.value = st.caption;
+    capCheck(scope); toast('Açıklama hazır; kendi sesine göre düzenle.');
+  } catch (e) { toast('AI: ' + e.message); }
+  btn.disabled = false; btn.innerHTML = old;
+}
+function capTags(scope) {
+  const st = capState(scope);
+  const post = s.posts.find(p => p.id === st.postId);
+  st.tags = buildHashtags(post?.pillar || st.pillar || 'yasam', s.brand?.hashtags || '');
+  const inp = el.querySelector(`#${scope}-tags`); if (inp) inp.value = st.tags;
+  capCheck(scope);
+}
+
 function viewCalendar() {
-  const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; });
+  const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; });
   const key = d => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
   const upcoming = s.posts.filter(p => p.planned_for >= todayISO());
   const mix = Object.fromEntries(PILLARS.map(p => [p.id, 0]));
@@ -81,7 +333,8 @@ function viewCalendar() {
   const total = upcoming.length || 1;
   const overdue = s.posts.filter(p => p.planned_for < todayISO() && p.status !== 'paylasildi');
   return `
-    <section class="card">
+    ${factoryCard()}
+    <section class="card" style="margin-top:16px">
       <h2><i class="ti ti-chart-pie" aria-hidden="true"></i> İçerik dengesi (planlananlar)</h2>
       <div class="mix">${PILLARS.map(p => `<div class="mix-row"><span>${esc(p.label)}</span>
         <div class="meter"><span style="width:${Math.round((mix[p.id] / total) * 100)}%"></span></div>
@@ -91,7 +344,7 @@ function viewCalendar() {
     ${overdue.length ? `<section class="card" style="margin-top:16px"><h2><i class="ti ti-alert-circle" aria-hidden="true"></i> Bekleyenler</h2>
       ${overdue.map(postRow).join('')}</section>` : ''}
     <section class="card" style="margin-top:16px">
-      <h2><i class="ti ti-calendar" aria-hidden="true"></i> Önümüzdeki 14 gün</h2>
+      <h2><i class="ti ti-calendar" aria-hidden="true"></i> Önümüzdeki 30 gün</h2>
       <div class="cal-days">${days.map(d => {
         const list = s.posts.filter(p => p.planned_for === key(d));
         return `<div class="cal-day ${list.length ? '' : 'empty'}">
@@ -102,10 +355,12 @@ function viewCalendar() {
 }
 
 function postRow(p) {
+  const canMake = PLAN_FORMATS.includes(p.format) && p.status !== 'paylasildi';
   return `<div class="post-row">
     <button class="post-main" data-act="edit-post" data-id="${p.id}">
       <strong>${esc(p.topic)}</strong>
-      <span class="small muted">${esc(p.platform)} · ${esc(FORMATS[p.format])} · ${esc(pillarLabel(p.pillar))}</span></button>
+      <span class="small muted">${esc(hhmm(p.post_time))} · ${esc(FORMATS[p.format])} · ${esc(pillarLabel(p.pillar))}${p.tool && p.tool !== 'uygulama' ? ' · ' + esc(TOOLS[p.tool]?.label || '') : ''}${p.media ? ' · <i class="ti ti-paperclip" aria-label="Dosya var"></i>' : ''}</span></button>
+    ${canMake ? `<button class="btn btn-gold sm" data-act="produce" data-id="${p.id}"><i class="ti ti-player-play" aria-hidden="true"></i> Oluştur</button>` : ''}
     <button class="chip st-${p.status}" data-act="cycle" data-id="${p.id}" title="Durumu ilerlet">${POST_STATUS[p.status]}</button>
   </div>`;
 }
@@ -126,8 +381,13 @@ function postDialog(p = null, preset = {}) {
         <div class="field"><label for="c-fmt">Format</label><select id="c-fmt" name="format">${Object.entries(FORMATS).map(([k, l]) => `<option value="${k}" ${k === v.format ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><label for="c-pil">İçerik sütunu</label><select id="c-pil" name="pillar">${PILLARS.map(x => `<option value="${x.id}" ${x.id === v.pillar ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></div>
       </div>
+      <div class="form-2">
+        <div class="field"><label for="c-time">Paylaşım saati</label><input id="c-time" name="post_time" type="time" value="${esc(hhmm(v.post_time || s.brand?.post_time))}"></div>
+        <div class="field"><label for="c-tool">Üretim aracı</label><select id="c-tool" name="tool">${Object.entries(TOOLS).map(([k, t]) => `<option value="${k}" ${k === (v.tool || 'uygulama') ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></div>
+      </div>
       <div class="field"><label for="c-cap">Caption</label><textarea id="c-cap" name="caption" rows="5" maxlength="2200">${esc(v.caption)}</textarea>
         <span class="small muted" id="c-count">${(v.caption || '').length}/2200</span></div>
+      <div class="field"><label for="c-tags">Hashtagler</label><input id="c-tags" name="hashtags" maxlength="600" value="${esc(v.hashtags || '')}"></div>
       <div id="c-check"></div>
       <div class="field"><label for="c-st">Durum</label><select id="c-st" name="status">${Object.entries(POST_STATUS).map(([k, l]) => `<option value="${k}" ${k === v.status ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <p class="error" id="c-error" role="alert"></p>
@@ -136,7 +396,7 @@ function postDialog(p = null, preset = {}) {
       ${p ? '<button type="button" class="btn btn-ghost" data-act="del-post" data-id="' + p.id + '">Sil</button>' : ''}
       ${p && p.ig_permalink ? `<a class="btn btn-ghost" href="${esc(p.ig_permalink)}" target="_blank" rel="noopener"><i class="ti ti-brand-instagram" aria-hidden="true"></i> Instagram'da gör</a>` : ''}
       ${p && p.carousel ? '<button type="button" class="btn btn-ghost" data-act="kar-open" data-id="' + p.id + '"><i class="ti ti-carousel-horizontal" aria-hidden="true"></i> Karusel stüdyosunda aç</button>' : ''}
-      ${p && p.storyboard ? '<button type="button" class="btn btn-ghost" data-act="reel-open" data-id="' + p.id + '"><i class="ti ti-movie" aria-hidden="true"></i> Stüdyoda aç</button>' : ''}
+      ${p && PLAN_FORMATS.includes(p.format) ? '<button type="button" class="btn btn-gold" data-act="produce" data-id="' + p.id + '"><i class="ti ti-player-play" aria-hidden="true"></i> Stüdyoda oluştur</button>' : ''}
       ${s.ai ? '<button type="button" class="btn btn-ghost" data-act="ai-cap"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile yaz</button>' : ''}
       <button type="button" class="btn btn-ghost" data-act="copy-cap">Caption'ı kopyala</button>
       <button class="btn btn-primary" type="submit">Kaydet</button></footer></form>`;
@@ -318,6 +578,21 @@ function onClick(e) {
     case 'reel-new': reelNew(); break;
     case 'reel-clear': reelClearClip(+b.dataset.i); break;
     case 'reel-mode': reelMode(b.dataset.mode); break;
+    case 'reel-step': s.reel.step = b.dataset.step; draw(); el.querySelector('.reel-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); break;
+    case 'reel-outro': reelOutro(b); break;
+    case 'plan-make': planMake(b); break;
+    case 'plan-ai': planAi(b); break;
+    case 'produce': produce(id); break;
+    case 'tool': setTool(b.dataset.scope, b.dataset.tool); break;
+    case 'cap-ai': capAi(b.dataset.scope, b); break;
+    case 'cap-tags': capTags(b.dataset.scope); break;
+    case 'cap-copy': navigator.clipboard.writeText(fullCaption(capState(b.dataset.scope))).then(() => toast('Açıklama ve etiketler kopyalandı.'), () => toast('Kopyalanamadı.')); break;
+    case 'g-step': s.gon.step = b.dataset.step; draw(); break;
+    case 'g-save': gSave(b); break;
+    case 'g-done': gDone(b); break;
+    case 'g-logo': s.gon.logoOn = !s.gon.logoOn; draw(); break;
+    case 'g-pos': s.gon.logoPos = b.dataset.pos; gPaint(); el.querySelectorAll('[data-pos]').forEach(x => x.setAttribute('aria-pressed', x.dataset.pos === s.gon.logoPos)); break;
+    case 'g-new': initGon(); draw(); break;
     case 'reel-parse': reelParse(); break;
     case 'reel-ai-src': reelAiSrc(b); break;
     case 'reel-add': reelSceneOp('add'); break;
@@ -345,6 +620,9 @@ function onClick(e) {
 function onInput(e) {
   if (e.target.id === 'c-cap') updateCheck();
   if (e.target.dataset.reel) onReelInput(e.target);
+  if (e.target.dataset.gon === 'topic') s.gon.topic = e.target.value;
+  if (e.target.dataset.cap) { capState(e.target.dataset.cap).caption = e.target.value; capCheck(e.target.dataset.cap); }
+  if (e.target.dataset.tags) { capState(e.target.dataset.tags).tags = e.target.value; capCheck(e.target.dataset.tags); }
   if (e.target.id === 'ig-cap') igUpdate();
   if (e.target.dataset.k || e.target.dataset.kf || e.target.dataset.kb) onKarInput(e.target);
 }
@@ -378,6 +656,7 @@ async function onSubmit(e) {
   btn.disabled = true;
   try {
     if (form.dataset.form === 'post') await savePost(form);
+    if (form.dataset.form === 'brand') await saveBrandKit(form);
     if (form.dataset.form === 'lead-form') await saveLeadForm(form);
     if (form.dataset.form === 'ig') await saveIg(form);
   } finally { if (btn.isConnected) btn.disabled = false; }
@@ -394,7 +673,8 @@ async function savePost(form) {
   if (risky.length && submit.dataset.confirm !== '1') { submit.dataset.confirm = '1'; err.textContent = 'Caption\'da yüksek riskli ifade var. Yine de kaydetmek için tekrar dokun.'; return; }
   err.textContent = '';
   const row = { topic, planned_for: f('planned_for').value, platform: f('platform').value, format: f('format').value,
-    pillar: f('pillar').value, caption: f('caption').value.trim() || null, status: f('status').value };
+    pillar: f('pillar').value, caption: f('caption').value.trim() || null, status: f('status').value,
+    post_time: f('post_time').value || DEFAULT_TIME, tool: f('tool').value, hashtags: f('hashtags').value.trim() || null };
   const id = form.dataset.id;
   const q = id ? supabase.from('content_posts').update(row).eq('id', id).select().single()
     : supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id }).select().single();
@@ -447,7 +727,77 @@ function initReel(mode = 'ai') {
   const brand = loadBrand();
   const sb = mode === 'metin' ? blankStoryboard(brand) : defaultStoryboard(brand);
   s.reel = { sb, mode, other: null, note: '', topic: '', postId: null, media: new Array(MAX_SCENES).fill(null),
-    names: new Array(MAX_SCENES).fill(''), prev: 0, out: null, busy: false, quality: 1080 };
+    names: new Array(MAX_SCENES).fill(''), prev: 0, out: null, busy: false, quality: 1080,
+    step: 'senaryo', tool: 'uygulama', caption: '', tags: '', ext: null, outroOn: true };
+}
+// Takvimdeki kayıttan araç, açıklama, etiket ve dış dosyayı al
+function reelLoadPost(p) {
+  Object.assign(s.reel, { tool: p.tool || 'uygulama', caption: p.caption || '', tags: p.hashtags || '', ext: p.media || null });
+  if (!s.reel.tags) s.reel.tags = buildHashtags(p.pillar || 'yasam', s.brand?.hashtags || '');
+  if (s.brand?.handle || s.brand?.kw) s.reel.sb = normalizeStoryboard({ ...s.reel.sb, handle: s.reel.sb.handle || s.brand.handle, kw: s.brand.kw || s.reel.sb.kw });
+}
+
+function setTool(scope, tool) {
+  if (!TOOLS[tool]) return;
+  if (scope === 'reels') s.reel.tool = tool; else s.gon.tool = tool;
+  draw();
+}
+
+async function mediaUpload(scope, file) {
+  if (!file) return;
+  const isVideo = /^video\//.test(file.type), isImg = /^image\//.test(file.type);
+  if (scope === 'reels' && !isVideo) { toast('Reels için video dosyası seç (MP4 ya da MOV).'); return; }
+  if (scope === 'gonderi' && !isImg) { toast('Gönderi için görsel seç (JPEG ya da PNG).'); return; }
+  if (scope === 'gonderi') { gPick(file, true); return; }
+  const r = s.reel;
+  r.extFile = file;
+  if (r.out) { URL.revokeObjectURL(r.out.url); r.out = null; }
+  const st = el.querySelector('#r-status'); if (st) st.textContent = 'Yükleniyor…';
+  try {
+    r.ext = await uploadMedia(file, { name: file.name, folder: 'reels' });
+    r.out = { blob: file, url: URL.createObjectURL(file), name: file.name, ext: (file.name.split('.').pop() || 'mp4').toLowerCase(), width: 0, height: 0, drops: 0, external: true };
+    await reelSaveFields({ media: r.ext, tool: r.tool, status: 'hazir' });
+    toast('Video yüklendi ve takvimde "Hazır" işaretlendi.');
+  } catch (e) { toast(e.message); }
+  draw();
+}
+
+// Dış videoya logo videosunu ekle (yeniden kayıt) → yeni dosya olarak yükle
+async function reelOutro(btn) {
+  const r = s.reel;
+  if (!r.extFile) { toast('Önce bu cihazdan bitmiş videoyu yükle.'); return; }
+  let outro;
+  try { outro = await getOutro(); } catch (e) { toast(e.message); return; }
+  if (!outro) { toast('Önce Marka kitinden logo videosunu yükle (İçerik takvimi sekmesi).'); return; }
+  r.busy = true; btn.disabled = true;
+  const status = el.querySelector('#r-status'), prog = el.querySelector('#r-prog');
+  if (status) status.textContent = 'Logo ekleniyor… video süresi kadar sürer, ekranı açık tut.';
+  try {
+    const canvas = document.createElement('canvas');
+    const res = await appendOutro({ file: r.extFile, outro, canvas, onProgress: p => { if (prog) prog.style.width = Math.round(p * 100) + '%'; } });
+    const name = reelFileName(r.topic || 'reels', res.ext);
+    r.ext = await uploadMedia(res.blob, { name, folder: 'reels', ext: res.ext });
+    if (r.out) URL.revokeObjectURL(r.out.url);
+    r.out = { ...res, name, url: URL.createObjectURL(res.blob), drops: 0, external: true, withOutro: true };
+    await reelSaveFields({ media: r.ext, status: 'hazir' });
+    toast('Logo videosu eklendi.');
+  } catch (e) { toast(e.message); }
+  r.busy = false; draw();
+}
+
+// Takvimdeki kaydı sessizce güncelle (yoksa oluştur)
+async function reelSaveFields(fields) {
+  const r = s.reel;
+  if (!r.postId) {
+    const topic = (r.topic.trim() || r.sb.scenes[0].top.replace(/\n/g, ' ') || 'Reels').slice(0, 200);
+    const { data, error } = await supabase.from('content_posts').insert({ org_id: ctx.org.id, topic, format: 'reels', planned_for: todayISO(),
+      platform: 'Instagram', pillar: 'yasam', status: 'taslak', post_time: hhmm(s.brand?.post_time), storyboard: r.sb, ...fields }).select().single();
+    if (error) throw new Error(trError(error));
+    s.posts = [...s.posts, data]; r.postId = data.id; r.topic = data.topic; return;
+  }
+  const { data, error } = await supabase.from('content_posts').update(fields).eq('id', r.postId).select().single();
+  if (error) throw new Error(trError(error));
+  s.posts = s.posts.map(x => (x.id === data.id ? data : x));
 }
 
 const SEC_OPTS = Array.from({ length: (SEC_MAX - SEC_MIN) * 2 + 1 }, (_, i) => SEC_MIN + i / 2);
@@ -478,52 +828,92 @@ function sourceHtml(r) {
     ${r.note ? `<div class="check-box ${r.noteWarn ? 'warn' : 'ok'}" style="margin-top:10px"><p>${esc(r.note)}</p></div>` : ''}`;
 }
 
+const REEL_STEPS = [{ id: 'senaryo', label: 'Senaryo' }, { id: 'gorsel', label: 'Görseller' }, { id: 'video', label: 'Video ve paylaşım' }];
+function stepperHtml(steps, cur, act) {
+  const idx = steps.findIndex(x => x.id === cur);
+  return `<ol class="stepper" role="tablist">${steps.map((x, i) => `<li><button role="tab" data-act="${act}" data-step="${x.id}" aria-selected="${x.id === cur}" class="${i < idx ? 'done' : ''}">
+    <span class="st-n">${i < idx ? '<i class="ti ti-check" aria-hidden="true"></i>' : i + 1}</span>${esc(x.label)}</button></li>`).join('')}</ol>`;
+}
+const nextBtn = (act, step, label) => `<button type="button" class="btn btn-primary" data-act="${act}" data-step="${step}">${esc(label)} <i class="ti ti-arrow-right" aria-hidden="true"></i></button>`;
+
+function reelScenarioHtml(r, sb, N, tpl) {
+  return `<div class="seg" role="tablist" aria-label="Senaryo kaynağı">
+      <button role="tab" data-act="reel-mode" data-mode="ai" aria-selected="${r.mode === 'ai'}"><i class="ti ti-sparkles" aria-hidden="true"></i> AI asistan</button>
+      <button role="tab" data-act="reel-mode" data-mode="metin" aria-selected="${r.mode === 'metin'}"><i class="ti ti-file-text" aria-hidden="true"></i> Benim metnim</button>
+    </div>
+    <p class="small muted">${r.mode === 'ai' ? `Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)}` : 'Kendi senaryonu yapıştır; uygulama sahnelere böler, kelimelerine dokunmaz.'} Kutularda 1. satır beyaz, sonrakiler altın yazılır.</p>
+    ${sourceHtml(r)}
+    ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
+      <legend>Sahne ${i + 1}</legend>
+      <div class="reel-scene-tools">
+        <label class="small" for="r-sec-${i}">Süre</label>
+        <select id="r-sec-${i}" data-reel="sec" data-i="${i}">${SEC_OPTS.map(x => `<option value="${x}" ${x === sc.sec ? 'selected' : ''}>${fmtSec(x)} sn</option>`).join('')}</select>
+        ${N > MIN_SCENES ? `<button type="button" class="icon-btn" data-act="reel-del" data-i="${i}" aria-label="Sahne ${i + 1}'i sil"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ''}
+      </div>
+      <div class="field"><label for="r-top-${i}">Başlık</label><textarea id="r-top-${i}" data-reel="top" data-i="${i}" rows="2" maxlength="60">${esc(sc.top)}</textarea></div>
+      <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="${sc.bot.length > 70 ? 3 : 2}" maxlength="140">${esc(sc.bot)}</textarea></div>
+    </fieldset>`).join('')}
+    ${N < MAX_SCENES ? `<button type="button" class="btn btn-ghost" data-act="reel-add"><i class="ti ti-plus" aria-hidden="true"></i> Sahne ekle</button>` : ''}
+    <fieldset class="reel-scene"><legend>Kapanış</legend>
+      <div class="field"><label for="r-slogan">Slogan${r.mode === 'metin' ? ' (boş bırakılırsa gösterilmez)' : ''}</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
+      <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>
+      <div class="form-2">
+        <div class="field"><label for="r-handle">Hesap adı</label><input id="r-handle" data-reel="handle" maxlength="31" value="${esc(sb.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
+        <div class="field"><label for="r-kw">Yorum anahtar kelimesi</label><input id="r-kw" data-reel="kw" maxlength="16" value="${esc(sb.kw)}"></div>
+      </div>
+    </fieldset>
+    <div id="r-check"></div>
+    <div class="quick step-nav">${nextBtn('reel-step', 'gorsel', 'Görsellere geç')}</div>`;
+}
+
+function reelVisualHtml(r, sb) {
+  return `<p class="small muted">Her sahnenin arka planını seç. Seçmezsen örnek renkli arka plan kullanılır.
+      Dışarıda (Canva, Higgsfield, Kling…) hazır video ürettiysen bu adımı atla, "Video ve paylaşım"da aracı seçip bitmiş dosyayı yükle.</p>
+    ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
+      <legend>Sahne ${i + 1}: ${esc((sc.top || sc.bot).replace(/\n/g, ' ').slice(0, 40) || '—')}</legend>
+      <div class="reel-clip">
+        <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-video-plus" aria-hidden="true"></i> Telefondan klip ya da foto</label>
+        <input type="file" id="r-file-${i}" data-clip="${i}" accept="video/*,image/*" class="sr-only">
+        <span class="small muted reel-clip-name" id="r-name-${i}">${esc(r.names[i] || 'Klip yok · örnek arka plan')}</span>
+        ${r.media[i] ? `<button type="button" class="icon-btn" data-act="reel-clear" data-i="${i}" aria-label="Sahne ${i + 1} klibini kaldır"><i class="ti ti-x" aria-hidden="true"></i></button>` : ''}
+      </div>
+    </fieldset>`).join('')}
+    <div class="check-box"><p><strong>Yakında (Faz 2):</strong> Her sahne için stok video arama (Pexels) ve AI görsel üretimi bu ekrana gelecek.</p></div>
+    <div class="quick step-nav">${nextBtn('reel-step', 'video', 'Videoya geç')}</div>`;
+}
+
+function reelVideoHtml(r, sb, sup) {
+  const inApp = r.tool === 'uygulama';
+  const brief = toolBrief({ topic: r.topic || sb.scenes[0].top.replace(/\n/g, ' '), format: 'reels' }, { tool: r.tool, storyboard: sb, brand: s.brand || {} });
+  return `<p class="small muted">Bu Reels hangi araçla üretilsin?</p>
+    ${toolPicker('reels', r.tool)}
+    ${inApp ? `<div class="check-box ${s.brand?.logo_video_path ? 'ok' : 'warn'}"><p>
+        <label class="inline-check"><input type="checkbox" id="r-outro" ${r.outroOn && s.brand?.logo_video_path ? 'checked' : ''} ${s.brand?.logo_video_path ? '' : 'disabled'} data-reel="outro"> Sona logo videosunu ekle</label>
+        ${s.brand?.logo_video_path ? '' : ' · Önce <button type="button" class="link-btn" data-tab="takvim">Marka kiti</button>nden logo videosunu yükle.'}</p></div>
+      <p class="small muted">Sağdaki önizlemeden "Videoyu üret"e dokun. Video telefonunda üretilir.</p>`
+    : `${externalHtml('reels', { tool: r.tool, brief, media: r.ext, accept: 'video/mp4,video/quicktime,video/webm' })}
+      ${r.extFile ? `<button type="button" class="btn btn-gold" data-act="reel-outro" ${s.brand?.logo_video_path && !r.busy ? '' : 'disabled'}><i class="ti ti-movie" aria-hidden="true"></i> ${r.out?.withOutro ? 'Logo eklendi · tekrar ekle' : 'Sona logo videosunu ekle'}</button>
+        ${s.brand?.logo_video_path ? '' : '<p class="small muted">Logo videosu için önce Marka kitine yükle.</p>'}`
+      : (r.ext ? '<p class="small muted">Dosya takvimde kayıtlı. Logo eklemek için videoyu bu cihazdan bir kez daha seç.</p>' : '')}`}
+    ${capBoxHtml('reels', { caption: r.caption, tags: r.tags })}`;
+}
+
 function viewReels() {
   const r = s.reel, sb = r.sb, sup = reelSupport(window);
   const saved = s.posts.filter(p => p.storyboard).slice(-6).reverse();
   const tpl = TEMPLATES[sb.template];
   const N = sb.scenes.length;
+  const post = s.posts.find(p => p.id === r.postId);
   return `
     ${sup.ok ? '' : `<div class="check-box warn"><p><strong>Bu tarayıcı video üretemiyor.</strong> Telefonunuzda Chrome'un güncel sürümüyle açın.</p></div>`}
     ${sup.ok && !sup.mp4 ? `<div class="check-box warn"><p>Bu tarayıcı yalnızca WebM üretebiliyor; Instagram kabul etmeyebilir. Chrome'un güncel sürümünü deneyin.</p></div>` : ''}
     <div class="compose reel-compose">
       <section class="card reel-form">
-        <h2><i class="ti ti-movie" aria-hidden="true"></i> ${r.postId ? 'Reels senaryosu (takvimden)' : 'Yeni Reels'}</h2>
-        <div class="seg" role="tablist" aria-label="Senaryo kaynağı">
-          <button role="tab" data-act="reel-mode" data-mode="ai" aria-selected="${r.mode === 'ai'}"><i class="ti ti-sparkles" aria-hidden="true"></i> AI asistan</button>
-          <button role="tab" data-act="reel-mode" data-mode="metin" aria-selected="${r.mode === 'metin'}"><i class="ti ti-file-text" aria-hidden="true"></i> Benim metnim</button>
-        </div>
-        <p class="small muted">${r.mode === 'ai' ? `Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)}` : 'Kendi senaryonu yapıştır; uygulama sahnelere böler, kelimelerine dokunmaz.'} Kutularda 1. satır beyaz, sonrakiler altın yazılır.</p>
-        ${sourceHtml(r)}
-        <details class="reel-brand"${sb.handle ? '' : ' open'}><summary>Marka ayarları</summary>
-          <div class="form-2">
-            <div class="field"><label for="r-handle">Hesap adı</label><input id="r-handle" data-reel="handle" maxlength="31" value="${esc(sb.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
-            <div class="field"><label for="r-kw">Yorum anahtar kelimesi</label><input id="r-kw" data-reel="kw" maxlength="16" value="${esc(sb.kw)}"></div>
-          </div>
-          <p class="small muted">Bu bilgiler sadece bu cihazda hatırlanır ve her videonun kapanışında görünür.</p>
-        </details>
-        ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
-          <legend>Sahne ${i + 1}</legend>
-          <div class="reel-scene-tools">
-            <label class="small" for="r-sec-${i}">Süre</label>
-            <select id="r-sec-${i}" data-reel="sec" data-i="${i}">${SEC_OPTS.map(x => `<option value="${x}" ${x === sc.sec ? 'selected' : ''}>${fmtSec(x)} sn</option>`).join('')}</select>
-            ${N > MIN_SCENES ? `<button type="button" class="icon-btn" data-act="reel-del" data-i="${i}" aria-label="Sahne ${i + 1}'i sil"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ''}
-          </div>
-          <div class="field"><label for="r-top-${i}">Başlık</label><textarea id="r-top-${i}" data-reel="top" data-i="${i}" rows="2" maxlength="60">${esc(sc.top)}</textarea></div>
-          <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="${sc.bot.length > 70 ? 3 : 2}" maxlength="140">${esc(sc.bot)}</textarea></div>
-          <div class="reel-clip">
-            <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-video-plus" aria-hidden="true"></i> Klip seç</label>
-            <input type="file" id="r-file-${i}" data-clip="${i}" accept="video/*,image/*" class="sr-only">
-            <span class="small muted reel-clip-name" id="r-name-${i}">${esc(r.names[i] || 'Klip yok · örnek arka plan')}</span>
-            ${r.media[i] ? `<button type="button" class="icon-btn" data-act="reel-clear" data-i="${i}" aria-label="Sahne ${i + 1} klibini kaldır"><i class="ti ti-x" aria-hidden="true"></i></button>` : ''}
-          </div>
-        </fieldset>`).join('')}
-        ${N < MAX_SCENES ? `<button type="button" class="btn btn-ghost" data-act="reel-add"><i class="ti ti-plus" aria-hidden="true"></i> Sahne ekle</button>` : ''}
-        <fieldset class="reel-scene"><legend>Kapanış</legend>
-          <div class="field"><label for="r-slogan">Slogan${r.mode === 'metin' ? ' (boş bırakılırsa gösterilmez)' : ''}</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
-          <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>
-        </fieldset>
-        <div id="r-check"></div>
+        <h2><i class="ti ti-movie" aria-hidden="true"></i> ${post ? 'Reels: ' + esc(post.topic) : 'Yeni Reels'}</h2>
+        ${post ? `<p class="small muted"><i class="ti ti-calendar" aria-hidden="true"></i> ${esc(new Date(post.planned_for + 'T12:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(hhmm(post.post_time))} · ${POST_STATUS[post.status]}</p>`
+          : ''}
+        ${stepperHtml(REEL_STEPS, r.step, 'reel-step')}
+        ${r.step === 'senaryo' ? reelScenarioHtml(r, sb, N, tpl) : r.step === 'gorsel' ? reelVisualHtml(r, sb) : reelVideoHtml(r, sb, sup)}
       </section>
       <section class="card reel-side">
         <h2><i class="ti ti-device-mobile" aria-hidden="true"></i> Önizleme</h2>
@@ -531,11 +921,11 @@ function viewReels() {
         <div class="chips reel-prev-chips" role="group" aria-label="Önizlenecek sahne">
           ${[...sb.scenes.map((_, i) => [i, `${i + 1}`]), ...(sb.slogan ? [[N, 'Slogan']] : []), [N + 1, 'Kapanış']].map(([i, l]) => `<button class="chip" data-act="reel-prev" data-i="${i}" aria-pressed="${r.prev === i}">${l}</button>`).join('')}
         </div>
-        <div class="field"><label for="r-quality">Kalite</label>
-          <select id="r-quality" data-reel="quality"><option value="1080" ${r.quality === 1080 ? 'selected' : ''}>1080 × 1920 (önerilen)</option><option value="720" ${r.quality === 720 ? 'selected' : ''}>720 × 1280 (eski telefonlar)</option></select></div>
+        ${r.tool === 'uygulama' ? `<div class="field"><label for="r-quality">Kalite</label>
+          <select id="r-quality" data-reel="quality"><option value="1080" ${r.quality === 1080 ? 'selected' : ''}>1080 × 1920 (önerilen)</option><option value="720" ${r.quality === 720 ? 'selected' : ''}>720 × 1280 (eski telefonlar)</option></select></div>` : ''}
         <div class="reel-bar" aria-hidden="true"><span id="r-prog"></span></div>
-        <p class="small muted" id="r-status" role="status">${r.busy ? 'Üretiliyor…' : `Video ${fmtSec(Math.round(reelTotal(sb) * 2) / 2)} sn sürer (${N} sahne); üretim sırasında ekranı açık tutun.`}</p>
-        <button type="button" class="btn btn-gold reel-go" data-act="reel-render" ${sup.ok && !r.busy ? '' : 'disabled'}><i class="ti ti-player-record" aria-hidden="true"></i> Videoyu üret</button>
+        <p class="small muted" id="r-status" role="status">${r.busy ? 'İşleniyor…' : `Video ${fmtSec(Math.round(reelTotal(sb) * 2) / 2)} sn sürer (${N} sahne)${r.outroOn && s.brand?.logo_video_path ? ' + logo' : ''}; üretim sırasında ekranı açık tutun.`}</p>
+        ${r.tool === 'uygulama' ? `<button type="button" class="btn btn-gold reel-go" data-act="reel-render" ${sup.ok && !r.busy ? '' : 'disabled'}><i class="ti ti-player-record" aria-hidden="true"></i> Videoyu üret</button>` : ''}
         <div id="r-out">${reelOutHtml()}</div>
         <div class="quick" style="margin-top:12px">
           <button type="button" class="btn btn-ghost" data-act="reel-cal"><i class="ti ti-calendar-plus" aria-hidden="true"></i> ${r.postId ? 'Takvimde güncelle' : 'Takvime kaydet'}</button>
@@ -547,7 +937,151 @@ function viewReels() {
             <span class="small muted">${esc(new Date(p.planned_for).toLocaleDateString('tr-TR'))} · ${POST_STATUS[p.status]}</span></li>`).join('')}</ul>` : ''}
       </section>
     </div>
-    <p class="small muted" style="margin-top:12px">Klipler ve üretilen video telefonunuzda kalır, sunucuya yüklenmez. Müziği paylaşırken Instagram'ın müzik kütüphanesinden ekleyin.</p>`;
+    <p class="small muted" style="margin-top:12px">Uygulamada üretilen video telefonunda kalır; dış araçtan yüklediğin dosya Instagram'a gönderilebilmesi için hesabındaki klasörde saklanır. Müziği paylaşırken Instagram'ın müzik kütüphanesinden ekleyin.</p>`;
+}
+
+// ====================================================================
+// Gönderi stüdyosu: ① Görsel (kendi fotoğrafın ya da dış araç) → ② Açıklama, etiket, paylaşım
+const GON_STEPS = [{ id: 'gorsel', label: 'Görsel' }, { id: 'aciklama', label: 'Açıklama ve paylaşım' }];
+const GW = 1080, GH = 1350;
+function initGon() {
+  s.gon = { postId: null, topic: '', pillar: 'yasam', tool: 'uygulama', step: 'gorsel', img: null, imgName: '', logoOn: true, logoPos: 'br',
+    caption: '', tags: buildHashtags('yasam', s.brand?.hashtags || ''), media: null, dirty: false };
+}
+function gonOpen(p) {
+  initGon();
+  Object.assign(s.gon, { postId: p.id, topic: p.topic, pillar: p.pillar || 'yasam', tool: p.tool || 'uygulama', caption: p.caption || '',
+    tags: p.hashtags || buildHashtags(p.pillar || 'yasam', s.brand?.hashtags || ''), media: p.media || null, step: p.media ? 'aciklama' : 'gorsel' });
+  if (p.media?.url) {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => { s.gon.img = img; s.gon.dirty = false; if (s.tab === 'gonderi') gPaint(); };
+    img.src = p.media.url;
+  }
+  s.tab = 'gonderi'; history.replaceState(null, '', '#/pazarlama?tab=gonderi'); draw();
+}
+
+function viewGonderi() {
+  const g = s.gon;
+  const post = s.posts.find(p => p.id === g.postId);
+  const brief = toolBrief({ topic: g.topic || 'Gönderi', format: 'gonderi' }, { tool: g.tool, brand: s.brand || {} });
+  const todo = s.posts.filter(p => p.format === 'gonderi' && p.status !== 'paylasildi' && p.planned_for >= todayISO()).slice(0, 6);
+  return `<div class="compose reel-compose">
+    <section class="card reel-form">
+      <h2><i class="ti ti-photo" aria-hidden="true"></i> ${post ? 'Gönderi: ' + esc(post.topic) : 'Yeni gönderi'}</h2>
+      ${post ? `<p class="small muted"><i class="ti ti-calendar" aria-hidden="true"></i> ${esc(new Date(post.planned_for + 'T12:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(hhmm(post.post_time))} · ${POST_STATUS[post.status]}</p>`
+        : `<p class="small muted">Takvimdeki bir gönderiyi "Oluştur" ile açarsan konu ve tarih otomatik gelir.</p>
+           <div class="field"><label for="g-topic">Konu</label><input id="g-topic" data-gon="topic" maxlength="200" value="${esc(g.topic)}"></div>`}
+      ${stepperHtml(GON_STEPS, g.step, 'g-step')}
+      ${g.step === 'gorsel' ? `
+        <p class="small muted">Bu gönderi hangi araçla üretilsin?</p>
+        ${toolPicker('gonderi', g.tool)}
+        ${g.tool === 'uygulama' ? `<div class="quick">
+            <label class="btn btn-primary" for="g-photo"><i class="ti ti-photo-plus" aria-hidden="true"></i> ${g.img ? 'Fotoğrafı değiştir' : 'Fotoğraf seç'}</label>
+            <input type="file" id="g-photo" accept="image/*" class="sr-only">
+            ${g.imgName ? `<span class="small muted">${esc(g.imgName)}</span>` : ''}</div>
+            <div class="check-box"><p><strong>Yakında (Faz 2):</strong> AI ile görsel üretimi ve stok fotoğraf arama.</p></div>`
+          : externalHtml('gonderi', { tool: g.tool, brief, media: g.media, accept: 'image/jpeg,image/png,image/webp' })}
+        <fieldset class="reel-scene"><legend>Logo</legend>
+          <label class="inline-check"><input type="checkbox" data-act="g-logo" ${g.logoOn ? 'checked' : ''}> Görselin üzerine logomu koy</label>
+          ${g.logoOn ? `<div class="chips" role="group" aria-label="Logo konumu">${[['br', 'Sağ alt'], ['bl', 'Sol alt'], ['tr', 'Sağ üst'], ['tl', 'Sol üst']].map(([k, l]) =>
+            `<button type="button" class="chip" data-act="g-pos" data-pos="${k}" aria-pressed="${g.logoPos === k}">${l}</button>`).join('')}</div>` : ''}
+          ${s.brand?.logo_path || s.kar?.logo ? '' : '<p class="small muted">Logo için önce İçerik takvimi → Marka kitinden logonu yükle.</p>'}
+        </fieldset>
+        <div class="quick step-nav">${nextBtn('g-step', 'aciklama', 'Açıklamaya geç')}</div>`
+      : `${capBoxHtml('gonderi', { caption: g.caption, tags: g.tags })}
+        <div class="quick step-nav">
+          <button type="button" class="btn btn-primary" data-act="g-save"><i class="ti ti-device-floppy" aria-hidden="true"></i> Kaydet (Hazır)</button>
+          ${post ? `<button type="button" class="btn btn-ghost" data-act="g-done"><i class="ti ti-check" aria-hidden="true"></i> Paylaştım</button>` : ''}
+        </div>`}
+      <p class="error" id="g-error" role="alert"></p>
+    </section>
+    <section class="card reel-side">
+      <h2><i class="ti ti-device-mobile" aria-hidden="true"></i> Önizleme (4:5)</h2>
+      <div class="gon-stage"><canvas id="g-canvas" width="540" height="675" aria-label="Gönderi önizlemesi"></canvas></div>
+      <div class="quick" style="margin-top:10px">
+        <button type="button" class="btn btn-ghost" data-act="g-save"><i class="ti ti-download" aria-hidden="true"></i> Kaydet ve indir</button>
+        <button type="button" class="btn btn-ghost" data-act="g-new"><i class="ti ti-file-plus" aria-hidden="true"></i> Yeni gönderi</button>
+      </div>
+      ${todo.length ? `<h3 style="margin-top:18px">Sıradaki gönderiler</h3>
+        <ul class="entry-list">${todo.map(p => `<li><button class="link-btn" data-act="produce" data-id="${p.id}">${esc(p.topic)}</button>
+          <span class="small muted">${esc(new Date(p.planned_for + 'T12:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }))} · ${POST_STATUS[p.status]}</span></li>`).join('')}</ul>` : ''}
+    </section>
+  </div>`;
+}
+
+// Görseli 1080×1350'ye kırp, logoyu yerleştir
+async function gCompose(c, W, H) {
+  const g = s.gon, k = W / GW;
+  c.fillStyle = '#111c33'; c.fillRect(0, 0, W, H);
+  if (g.img) {
+    const iw = g.img.naturalWidth, ih = g.img.naturalHeight;
+    const sc = Math.max(W / iw, H / ih), dw = iw * sc, dh = ih * sc;
+    c.drawImage(g.img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  } else {
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.font = `600 ${40 * k}px "DM Sans", sans-serif`; c.textAlign = 'center';
+    c.fillText('Fotoğraf seç ya da yükle', W / 2, H / 2);
+  }
+  if (g.logoOn) {
+    const logo = await getLogo();
+    if (logo) {
+      const lw = 190 * k, lh = lw * (logo.naturalHeight / logo.naturalWidth), m = 44 * k;
+      const x = g.logoPos.endsWith('r') ? W - lw - m : m, y = g.logoPos.startsWith('b') ? H - lh - m : m;
+      c.globalAlpha = 0.95; c.drawImage(logo, x, y, lw, lh); c.globalAlpha = 1;
+    }
+  }
+}
+async function gPaint() {
+  const cv = el.querySelector('#g-canvas');
+  if (!cv) return;
+  await gCompose(cv.getContext('2d'), cv.width, cv.height);
+  capCheck('gonderi');
+}
+function gPick(file, external) {
+  if (!file) return;
+  if (file.size > 30 * 1048576) { toast('Görsel çok büyük (30 MB üstü).'); return; }
+  const img = new Image();
+  img.onload = () => { s.gon.img = img; s.gon.imgName = file.name; s.gon.dirty = true; if (external) s.gon.extName = file.name; draw(); };
+  img.onerror = () => toast('Görsel açılamadı; JPEG ya da PNG dene.');
+  img.src = URL.createObjectURL(file);
+}
+
+async function gSave(btn) {
+  const g = s.gon, err = el.querySelector('#g-error');
+  if (!g.img) { if (err) err.textContent = 'Önce bir görsel seç ya da yükle.'; s.gon.step = 'gorsel'; draw(); return; }
+  const risky = checkMessage(fullCaption(g)).filter(x => x.level === 'yuksek');
+  if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; if (err) err.textContent = 'Açıklamada yüksek riskli ifade var. Yine de kaydetmek için tekrar dokun.'; return; }
+  btn.disabled = true;
+  try {
+    const cv = document.createElement('canvas'); cv.width = GW; cv.height = GH;
+    await gCompose(cv.getContext('2d'), GW, GH);
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.92));
+    const name = reelFileName(g.topic || 'gonderi', 'jpg').replace(/^reels-/, 'gonderi-');
+    if (g.dirty || !g.media) g.media = await uploadMedia(blob, { name, folder: 'gonderi', ext: 'jpg' });
+    g.dirty = false;
+    const row = { tool: g.tool, media: g.media, status: 'hazir', hashtags: (g.tags || '').trim() || null,
+      ...(g.caption.trim() ? { caption: g.caption.trim().slice(0, 2200) } : {}) };
+    let data, error;
+    if (g.postId) ({ data, error } = await supabase.from('content_posts').update(row).eq('id', g.postId).select().single());
+    else ({ data, error } = await supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, topic: (g.topic || 'Gönderi').slice(0, 200), format: 'gonderi',
+      planned_for: todayISO(), platform: 'Instagram', pillar: g.pillar, post_time: hhmm(s.brand?.post_time) }).select().single());
+    if (error) throw new Error(trError(error));
+    s.posts = g.postId ? s.posts.map(x => (x.id === data.id ? data : x)) : [...s.posts, data];
+    g.postId = data.id;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('Gönderi "Hazır" olarak kaydedildi ve görsel indirildi.');
+    draw();
+  } catch (e) { if (err) err.textContent = e.message; }
+  btn.disabled = false;
+}
+async function gDone(btn) {
+  const g = s.gon; if (!g.postId) return;
+  btn.disabled = true;
+  const { data, error } = await supabase.from('content_posts').update({ status: 'paylasildi', published_at: new Date().toISOString() }).eq('id', g.postId).select().single();
+  btn.disabled = false;
+  if (error) { toast(trError(error)); return; }
+  s.posts = s.posts.map(x => (x.id === data.id ? data : x));
+  toast('Paylaşıldı olarak işaretlendi.'); draw();
 }
 
 function reelOutHtml() {
@@ -563,7 +1097,7 @@ function reelOutHtml() {
     </div></div>`;
 }
 
-function afterReelDraw() { updateReelCheck(); paintPreview(); }
+function afterReelDraw() { updateReelCheck(); paintPreview(); capCheck('reels'); }
 
 let previewQueued = false;
 async function paintPreview() {
@@ -596,6 +1130,7 @@ function onReelInput(t) {
   const r = s.reel, k = t.dataset.reel, i = +t.dataset.i;
   if (k === 'topic') { r.topic = t.value; return; }
   if (k === 'quality') { r.quality = +t.value; return; }
+  if (k === 'outro') { r.outroOn = t.checked; return; }
   if (k === 'src') { r.sb = { ...r.sb, src: t.value.slice(0, 4000) }; return; }
   const N = r.sb.scenes.length;
   const raw = { ...r.sb, scenes: r.sb.scenes.map(x => ({ ...x })) };
@@ -615,6 +1150,10 @@ async function onChange(e) {
   const t = e.target;
   if (t.id === 'ig-ok' || t.id === 'ig-cap') { igUpdate(); return; }
   if (t.id === 'k-photo') { kPhoto(t.files && t.files[0]); return; }
+  if (t.id === 'b-logo') { brandFile('logo', t.files && t.files[0]); return; }
+  if (t.id === 'b-video') { brandFile('video', t.files && t.files[0]); return; }
+  if (t.id === 'g-photo') { gPick(t.files && t.files[0], false); return; }
+  if (t.dataset.media) { mediaUpload(t.dataset.media, t.files && t.files[0]); return; }
   if (t.id === 'k-logo') { kLogo(t.files && t.files[0]); return; }
   if (t.dataset.kb === 'handle') { t.value = normalizeBrand({ handle: t.value }).handle; return; }
   if (t.dataset.reel === 'quality') { s.reel.quality = +t.value; return; }
@@ -671,10 +1210,12 @@ async function reelRender(btn) {
   if (status()) status().textContent = 'Üretiliyor… ekranı kapatmayın.';
   try {
     const canvas = el.querySelector('#r-canvas') || document.createElement('canvas');
-    const res = await renderReel({ canvas, sb: r.sb, media: r.media, size: r.quality,
+    let outro = null;
+    if (r.outroOn) { try { outro = await getOutro(); } catch { toast('Logo videosu yüklenemedi; videosuz devam ediliyor.'); } }
+    const res = await renderReel({ canvas, sb: r.sb, media: r.media, size: r.quality, outro,
       onProgress: p => { const b = prog(); if (b) b.style.width = Math.round(p * 100) + '%'; } });
     const name = reelFileName(r.topic || r.sb.scenes[0].top, res.ext);
-    r.out = { ...res, name, url: URL.createObjectURL(res.blob) };
+    r.out = { ...res, name, url: URL.createObjectURL(res.blob), withOutro: !!outro };
     r.busy = false;
     if (s.tab === 'reels') draw();
     toast('Video hazır. Kaydedip Instagram\'da Reels olarak paylaşabilirsiniz.');
@@ -687,7 +1228,7 @@ async function reelRender(btn) {
 async function reelShare() {
   const o = s.reel.out; if (!o) return;
   const file = new File([o.blob], o.name, { type: o.blob.type });
-  try { await navigator.share({ files: [file], text: suggestCaption(s.reel.sb) }); }
+  try { await navigator.share({ files: [file], text: fullCaption(s.reel) || suggestCaption(s.reel.sb) }); }
   catch (e) { if (e.name !== 'AbortError') toast('Paylaşılamadı; önce telefona kaydedin.'); }
 }
 
@@ -697,11 +1238,12 @@ async function reelToCalendar(btn) {
   if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; err.textContent = 'Metinde yüksek riskli ifade var. Yine de kaydetmek için tekrar dokunun.'; return; }
   err.textContent = ''; btn.disabled = true;
   const topic = (r.topic.trim() || r.sb.scenes[0].top.replace(/\n/g, ' ')).slice(0, 200);
-  const row = { topic, format: 'reels', storyboard: r.sb };
+  const row = { topic, format: 'reels', storyboard: r.sb, tool: r.tool, hashtags: (r.tags || '').trim() || null,
+    ...(r.caption.trim() ? { caption: r.caption.trim().slice(0, 2200) } : {}), ...(r.ext ? { media: r.ext } : {}) };
   let q;
   if (r.postId) q = supabase.from('content_posts').update(row).eq('id', r.postId).select().single();
-  else q = supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, planned_for: todayISO(), platform: 'Instagram',
-    pillar: 'yasam', status: r.out ? 'hazir' : 'taslak', caption: suggestCaption(r.sb).slice(0, 2200) }).select().single();
+  else q = supabase.from('content_posts').insert({ caption: suggestCaption(r.sb).slice(0, 2200), ...row, org_id: ctx.org.id, planned_for: todayISO(), platform: 'Instagram',
+    pillar: 'yasam', status: r.out ? 'hazir' : 'taslak', post_time: hhmm(s.brand?.post_time) }).select().single();
   const { data, error } = await q;
   btn.disabled = false;
   if (error) { err.textContent = trError(error); return; }
@@ -717,16 +1259,20 @@ function reelOpen(id) {
   const dlg = el.querySelector('#p-dialog'); if (dlg?.open) dlg.close();
   if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
   s.reel.sb = normalizeStoryboard(p.storyboard); s.reel.topic = p.topic; s.reel.postId = p.id; s.reel.out = null; s.reel.prev = 0;
-  s.reel.mode = s.reel.sb.mode; s.reel.other = null; s.reel.note = '';
+  s.reel.mode = s.reel.sb.mode; s.reel.other = null; s.reel.note = ''; s.reel.step = 'senaryo';
+  reelLoadPost(p);
   s.tab = 'reels'; history.replaceState(null, '', '#/pazarlama?tab=reels'); draw();
 }
 
-function reelNew() {
+function reelNew(silent = false) {
   if (s.reel.busy) return;
   releaseClips(s.reel.media);
   if (s.reel.out) URL.revokeObjectURL(s.reel.out.url);
   const q = s.reel.quality, mode = s.reel.mode;
-  initReel(mode); s.reel.quality = q; draw();
+  initReel(mode); s.reel.quality = q;
+  s.reel.tags = buildHashtags('yasam', s.brand?.hashtags || '');
+  if (s.brand?.handle || s.brand?.kw) s.reel.sb = normalizeStoryboard({ ...s.reel.sb, handle: s.brand.handle || s.reel.sb.handle, kw: s.brand.kw || s.reel.sb.kw });
+  if (!silent) draw();
 }
 
 // Mod değişince öbür moddaki senaryo saklanır; geri dönünce kaldığı yerden devam

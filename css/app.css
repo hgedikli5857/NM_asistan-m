@@ -785,3 +785,41 @@ button.aj-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
 .reel-compose .seg { margin: 6px 0 10px; }
 .reel-scene-tools { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin: -4px 0 6px; }
 .reel-scene-tools select { width: auto; min-width: 92px; padding: 6px 8px; }
+.today-make { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 8px 0; border-radius: 12px; background: var(--gold-100); }
+@media (prefers-color-scheme: dark) { .today-make { background: #3A3020; } }
+
+/* ===================== İçerik fabrikası ===================== */
+.fab-card .quick { margin-top: 10px; }
+table.quota { width: 100%; border-collapse: collapse; font-size: .875rem; margin-top: 8px; }
+table.quota th, table.quota td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+table.quota th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.q-ok { color: var(--success); font-weight: 600; }
+.q-miss { color: var(--warning, #B7791F); font-weight: 600; }
+.brand-kit { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.brand-kit summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.brand-kit form { margin-top: 10px; }
+.brand-thumb { height: 56px; width: auto; max-width: 120px; border-radius: 8px; border: 1px solid var(--border); background: #111c33; object-fit: contain; }
+.label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 6px; }
+.stepper { list-style: none; display: flex; gap: 6px; padding: 0; margin: 12px 0 14px; flex-wrap: wrap; }
+.stepper li { flex: 1 1 0; min-width: 0; }
+.stepper button { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface); border-radius: 12px;
+  padding: 8px 10px; font: inherit; font-size: .85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; text-align: left; }
+.stepper button[aria-selected="true"] { border-color: var(--gold-600); color: var(--text); background: var(--gold-100); }
+.stepper .st-n { width: 22px; height: 22px; flex: none; border-radius: 99px; display: grid; place-items: center; background: var(--border); font-size: .75rem; }
+.stepper button[aria-selected="true"] .st-n { background: var(--gold-600); color: #fff; }
+.stepper button.done .st-n { background: var(--success); color: #fff; }
+.step-nav { margin-top: 14px; justify-content: flex-end; }
+.tool-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.tool-pick .chip[aria-checked="true"] { background: var(--navy-800); color: #fff; border-color: var(--navy-800); }
+.ext-tool { border: 1px dashed var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.ext-tool ol { margin: 0 0 10px; padding-left: 18px; }
+.inline-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.inline-check input { width: 18px; height: 18px; }
+.gon-stage { display: grid; place-items: center; background: #0b1324; border-radius: 12px; padding: 10px; }
+.gon-stage canvas { width: 100%; max-width: 360px; height: auto; border-radius: 6px; }
+.cap-box textarea { font-size: .95rem; }
+@media (max-width: 560px) { .stepper button { font-size: .75rem; padding: 7px 8px; } .stepper .st-n { width: 20px; height: 20px; } }
+@media (prefers-color-scheme: dark) {
+  .stepper button[aria-selected="true"] { background: #3A3020; }
+  .tool-pick .chip[aria-checked="true"] { background: #E6EAF5; color: #0E1A33; border-color: #E6EAF5; }
+}

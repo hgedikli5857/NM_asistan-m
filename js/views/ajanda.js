@@ -267,7 +267,8 @@ function openItem(key) {
           <button class="btn btn-ghost" data-act="appt-cancel" data-id="${esc(it.ref)}">İptal et</button>` : ''}
         ${it.pid ? `<a class="btn btn-ghost" href="#/kazanim?aday=${esc(it.pid)}"><i class="ti ti-user" aria-hidden="true"></i> Adayı aç</a>
           <a class="btn btn-ghost" href="#/iletisim?aday=${esc(it.pid)}"><i class="ti ti-message-2" aria-hidden="true"></i> Mesaj yaz</a>` : ''}
-        ${it.kind === 'icerik' ? '<a class="btn btn-ghost" href="#/pazarlama">Pazarlama\'da aç</a>' : ''}
+        ${it.kind === 'icerik' && !it.done ? `<a class="btn btn-gold" href="#/pazarlama?uret=${esc(it.ref)}"><i class="ti ti-player-play" aria-hidden="true"></i> Oluştur</a>` : ''}
+        ${it.kind === 'icerik' ? `<a class="btn btn-ghost" href="#/pazarlama">İçerik takvimi</a>` : ''}
         ${it.kind === 'takip' ? '<a class="btn btn-ghost" href="#/iletisim">İletişim → Bugün</a>' : ''}
       </div>
       ${people.length ? `<h3>Kişiler</h3><div class="chips">${people.map(p => `<button class="chip" data-person="${esc(p.id)}">${esc(p.name)}${p.late ? ' · gecikmiş' : ''}</button>`).join('')}</div>` : ''}

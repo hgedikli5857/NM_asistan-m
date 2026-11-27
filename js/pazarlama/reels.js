@@ -415,7 +415,8 @@ export async function loadReelFonts() {
 }
 
 // canvas üzerine videoyu gerçek zamanlı çizip kaydeder → { blob, ext, type, drops }
-export async function renderReel({ canvas, sb, media, size = 1080, onProgress = () => {}, signal }) {
+// outro: isteğe bağlı logo animasyon videosu (video öğesi); sona eklenir, en fazla 8 sn
+export async function renderReel({ canvas, sb, media, size = 1080, onProgress = () => {}, signal, outro = null }) {
   const type = pickMimeType();
   if (!type || !canvas.captureStream) throw new Error('Bu tarayıcı video üretemiyor. Chrome\'un güncel sürümünü deneyin.');
   const W = size === 720 ? 720 : 1080, H = Math.round(W * 16 / 9);
@@ -428,7 +429,10 @@ export async function renderReel({ canvas, sb, media, size = 1080, onProgress = 
   const chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const stopped = new Promise(r => { rec.onstop = r; });
-  const tl = timeline(sb), TOTAL = tl.total;
+  const tl = timeline(sb), BODY = tl.total;
+  const OUT = outro && outro.duration ? Math.min(8, outro.duration) : 0;
+  const TOTAL = BODY + OUT;
+  let outroStarted = false;
   const started = new Array(sb.scenes.length).fill(false);
   let drops = 0, aborted = false;
   rec.start(500);
@@ -445,7 +449,10 @@ export async function renderReel({ canvas, sb, media, size = 1080, onProgress = 
         if (!started[i] && t >= tl.starts[i] - 0.1) { started[i] = true; m.currentTime = 0; m.play().catch(() => {}); }
         if (started[i] && t > tl.starts[i] + tl.sec(i) + XF + 0.1 && !m.paused) m.pause();
       });
-      drawReelFrame(c, W, H, Math.min(t, TOTAL), media, sb);
+      if (OUT && t >= BODY) {
+        if (!outroStarted) { outroStarted = true; outro.currentTime = 0; outro.play().catch(() => {}); }
+        drawOutro(c, W, H, outro);
+      } else drawReelFrame(c, W, H, Math.min(t, BODY), media, sb);
       onProgress(Math.min(1, t / TOTAL));
       if (t >= TOTAL) return resolve();
       requestAnimationFrame(tick);
@@ -455,12 +462,95 @@ export async function renderReel({ canvas, sb, media, size = 1080, onProgress = 
   rec.stop();
   await stopped;
   stream.getTracks().forEach(tr => tr.stop());
-  media.forEach(m => m?.pause?.());
+  media.forEach(m => m?.pause?.()); outro?.pause?.();
   if (aborted) throw new Error('Üretim durduruldu.');
   const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
   return { blob: new Blob(chunks, { type: type.split(';')[0] }), ext, type, drops, width: W, height: H };
 }
 
+// Logo videosu: koyu zemin üzerinde, kırpmadan ortala
+export function drawOutro(c, W, H, v) {
+  c.globalAlpha = 1; c.fillStyle = DEEP; c.fillRect(0, 0, W, H);
+  const vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw) return;
+  const sc = Math.min(W / vw, H / vh), dw = vw * sc, dh = vh * sc;
+  c.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
+
+// Logo videosunu çizilebilir hale getir (aynı kaynaklı blob: tuval kirlenmez)
+export async function loadOutro(url) {
+  const res = await fetch(url, { cache: 'force-cache' });
+  if (!res.ok) throw new Error('Logo videosu indirilemedi.');
+  const blob = await res.blob();
+  return new Promise((ok, no) => {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.onloadeddata = () => ok(v); v.onerror = () => no(new Error('Logo videosu açılamadı.'));
+    v.src = URL.createObjectURL(blob);
+  });
+}
+
 export const reelFileName = (topic, ext) =>
   'reels-' + (String(topic || 'video').toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'video') + '.' + ext;
+
+// Dış araçtan (Canva, Higgsfield, Kling, CapCut…) gelen videonun sonuna logo videosunu ekler.
+// Tarayıcıda gerçek zamanlı yeniden kayıt: video süresi + logo süresi kadar sürer; orijinal ses korunur.
+const AV_TYPES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4',
+  'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+export async function appendOutro({ file, outro, canvas, onProgress = () => {} }) {
+  if (!outro) throw new Error('Önce Marka kitinden logo videosunu yükle.');
+  const MR = globalThis.MediaRecorder;
+  if (!MR || !canvas.captureStream) throw new Error('Bu tarayıcı video işleyemiyor. Chrome\'un güncel sürümünü deneyin.');
+  const src = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.playsInline = true; v.preload = 'auto'; v.src = src;
+  await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = () => no(new Error('Video açılamadı; MP4 ya da MOV yükleyin.')); });
+  const W0 = v.videoWidth || 1080, H0 = v.videoHeight || 1920, k = Math.min(1, 1080 / W0);
+  const W = Math.round(W0 * k / 2) * 2, H = Math.round(H0 * k / 2) * 2;
+  canvas.width = W; canvas.height = H;
+  const c = canvas.getContext('2d');
+  const stream = canvas.captureStream(30);
+  let ac = null;
+  try {
+    ac = new AudioContext();
+    const node = ac.createMediaElementSource(v), dest = ac.createMediaStreamDestination();
+    node.connect(dest);
+    dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    await ac.resume();
+  } catch { /* ses yoksa yalnızca görüntü */ }
+  const hasAudio = stream.getAudioTracks().length > 0;
+  const type = (hasAudio ? AV_TYPES : MIME_TYPES).find(t => MR.isTypeSupported(t));
+  if (!type) throw new Error('Bu tarayıcı video kaydedemiyor.');
+  const rec = new MR(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(r => { rec.onstop = r; });
+  const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 60;
+  const OUT = Math.min(8, outro.duration || 4);
+  rec.start(500);
+  await v.play();
+  let outroAt = 0;
+  await new Promise(resolve => {
+    function tick(now) {
+      if (!outroAt && !v.ended && v.currentTime < dur - 0.02) {
+        c.drawImage(v, 0, 0, W, H);
+        onProgress(Math.min(1, v.currentTime / (dur + OUT)));
+      } else {
+        if (!outroAt) { outroAt = now; v.pause(); outro.currentTime = 0; outro.play().catch(() => {}); }
+        drawOutro(c, W, H, outro);
+        const t = (now - outroAt) / 1000;
+        onProgress(Math.min(1, (dur + t) / (dur + OUT)));
+        if (t >= OUT) return resolve();
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+  rec.stop(); await stopped;
+  stream.getTracks().forEach(t => t.stop());
+  outro.pause(); v.pause(); URL.revokeObjectURL(src);
+  if (ac) ac.close().catch(() => {});
+  const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
+  return { blob: new Blob(chunks, { type: type.split(';')[0] }), ext, type, width: W, height: H };
+}

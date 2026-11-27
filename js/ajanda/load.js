@@ -44,7 +44,7 @@ export async function loadAgenda(ctx, { days = 14, now = new Date(), from = null
       .not('stage', 'in', '(pasif,is_ortagi)'), { max: 5000 })),
     safe('Görevler', supabase.from('tasks').select('id, title, due_date, done_at, prospect_id, prospects(full_name)')
       .eq('owner_id', uid).is('done_at', null).lte('due_date', lastDay).gte('due_date', dayKey(new Date(start.getTime() - 30 * 864e5))).limit(300)),
-    safe('İçerik planı', supabase.from('content_posts').select('id, topic, format, status, planned_for, published_at')
+    safe('İçerik planı', supabase.from('content_posts').select('id, topic, format, status, planned_for, published_at, post_time')
       .eq('owner_id', uid).gte('planned_for', firstDay).lte('planned_for', lastDay).limit(300)),
     supabase.rpc('gcal_status').then(r => r.data || {}, () => ({})),
     crm,

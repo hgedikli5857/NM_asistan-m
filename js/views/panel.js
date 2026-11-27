@@ -97,6 +97,8 @@ async function loadUpcoming(box, ctx) {
     const next = today.length ? null : nextUp(items, now);
     box.innerHTML = `<div class="card-head"><h2><i class="ti ti-calendar-time" aria-hidden="true"></i> Bugünün ajandası</h2>
         <a class="btn btn-ghost sm" href="#/ajanda">Ajandayı aç <i class="ti ti-arrow-right" aria-hidden="true"></i></a></div>
+      ${today.filter(x => x.kind === 'icerik' && !x.done).map(x => `<div class="today-make"><span><i class="ti ti-photo" aria-hidden="true"></i> Bugünün içeriği: <strong>${esc(x.title)}</strong></span>
+        <a class="btn btn-gold sm" href="#/pazarlama?uret=${esc(x.ref)}"><i class="ti ti-player-play" aria-hidden="true"></i> Oluştur</a></div>`).join('')}
       ${today.length ? `<ul class="ajanda-list">${today.slice(0, 8).map(x => itemRow(x, { link: true })).join('')}</ul>
           ${today.length > 8 ? `<p class="small muted">+${today.length - 8} kayıt daha — <a href="#/ajanda">tümü</a></p>` : ''}`
         : `<p class="muted small">Bugün için planlı bir şey yok.${next ? '' : ' <a href="#/ekip?tab=takvim">Bir sunum planla</a>.'}</p>

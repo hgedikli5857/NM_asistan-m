@@ -11,7 +11,7 @@ export const KINDS = {
 
 const APPT_KIND = { sunum: 'Sunum', birebir: 'Birebir', etkinlik: 'Etkinlik', egitim: 'Eğitim', diger: 'Randevu' };
 const FORMAT = { karusel: 'Karusel', reels: 'Reels', gonderi: 'Gönderi', hikaye: 'Hikâye' };
-const POST_ST = { taslak: 'Taslak', hazir: 'Hazır', yayinda: 'Yayında', planli: 'Planlı' };
+const POST_ST = { fikir: 'Konu', taslak: 'Üretimde', hazir: 'Hazır', paylasildi: 'Paylaşıldı' };
 const CRM_TUR = { online_sunum: 'Online sunum', tanisma_toplantisi: 'Tanışma toplantısı', egitim: 'Eğitim', diger: 'Etkinlik' };
 
 // Cihazın yerel günü (YYYY-MM-DD)
@@ -111,10 +111,13 @@ export function buildAgenda(src = {}, { now = new Date(), days = 14, from = null
 
   for (const c of src.posts || []) {
     if (!c.planned_for || !inWin(c.planned_for)) continue;
+    const t = /^\d{2}:\d{2}/.test(c.post_time || '') ? c.post_time.slice(0, 5) : null;
+    const st = fromDay(c.planned_for);
+    if (t) st.setHours(+t.slice(0, 2), +t.slice(3, 5), 0, 0);
     items.push({
-      kind: 'icerik', key: 'ic:' + c.id, day: c.planned_for, allDay: true, start: fromDay(c.planned_for),
-      title: c.topic || 'Paylaşım', sub: [FORMAT[c.format] || c.format, POST_ST[c.status] || c.status].filter(Boolean).join(' · '),
-      done: !!c.published_at || c.status === 'yayinda', href: '#/pazarlama'
+      kind: 'icerik', key: 'ic:' + c.id, day: c.planned_for, allDay: !t, start: st, end: t ? new Date(st.getTime() + 30 * 6e4) : null,
+      title: `${FORMAT[c.format] || 'İçerik'}: ${c.topic || 'Paylaşım'}`, sub: [POST_ST[c.status] || c.status].filter(Boolean).join(' · '),
+      done: !!c.published_at || c.status === 'paylasildi', href: '#/pazarlama?uret=' + c.id, ref: c.id, format: c.format
     });
   }
 
