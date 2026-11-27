@@ -13,6 +13,7 @@ import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normaliz
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
   shrinkPhoto, shrinkLogo, imageFromData } from '../pazarlama/karusel.js';
 import { appsScript } from '../pazarlama/gform.js';
+import { openPicker, queryFrom } from '../pazarlama/medya.js';
 
 const TABS = [
   { id: 'takvim', label: 'İçerik takvimi', icon: 'ti-calendar' },
@@ -64,6 +65,8 @@ export async function renderPazarlama(target, context) {
   s.gLeads = gLeads.data; s.gform = gStat.error ? null : gStat.data; s.gToken = null;
   const br = await supabase.from('content_brand').select('*').maybeSingle();
   s.brand = br.data || { post_time: DEFAULT_TIME };
+  const cl = await supabase.from('ig_comment_log').select('username, text, replied, error, created_at, prospect_id').order('created_at', { ascending: false }).limit(5);
+  s.comments = cl.data || [];
   initGon();
   draw();
   const uret = new URLSearchParams(location.hash.split('?')[1] || '').get('uret');
@@ -127,6 +130,7 @@ function brandKitHtml() {
           <input type="file" id="b-video" accept="video/mp4,video/quicktime,video/webm" class="sr-only"></div>
           <span class="small muted">En fazla 50 MB; ilk 8 saniyesi kullanılır.</span></div>
       </div>
+      ${commentKitHtml(b)}
       <p class="error" id="b-error" role="alert"></p>
       <button class="btn btn-primary" type="submit">Marka kitini kaydet</button>
     </form></details>`;
@@ -134,8 +138,15 @@ function brandKitHtml() {
 
 async function saveBrandKit(form) {
   const f = n => form.elements.namedItem(n).value.trim();
+  const wa = normalizeWa(f('wa_phone'));
+  const auto = form.elements.namedItem('comment_auto').checked;
   const row = { org_id: ctx.org.id, handle: normalizeHandle(f('handle')) || null, kw: f('kw') ? normalizeKeyword(f('kw')) : null,
-    hashtags: f('hashtags') || null, post_time: f('post_time') || DEFAULT_TIME, updated_at: new Date().toISOString() };
+    hashtags: f('hashtags') || null, post_time: f('post_time') || DEFAULT_TIME, updated_at: new Date().toISOString(),
+    wa_phone: wa || null, comment_auto: auto, comment_reply: f('comment_reply') || null };
+  const errBox = form.querySelector('#b-error');
+  if (f('wa_phone') && !wa) { errBox.textContent = 'WhatsApp numarasını ülke koduyla yaz (ör. 905321234567).'; return; }
+  if (auto && (!row.kw || !wa)) { errBox.textContent = 'Otomatik yanıt için yorum anahtar kelimesi ve WhatsApp numarası gerekli.'; return; }
+  if (row.comment_reply && checkMessage(row.comment_reply).some(x => x.level === 'yuksek')) { errBox.textContent = 'Yanıt metninde yüksek riskli ifade var; değiştir.'; return; }
   const { data, error } = await supabase.from('content_brand').upsert({ owner_id: ctx.user.id, ...row }).select().single();
   if (error) { form.querySelector('#b-error').textContent = trError(error); return; }
   s.brand = data; outroCache = null;
@@ -362,7 +373,7 @@ function postRow(p) {
   return `<div class="post-row">
     <button class="post-main" data-act="edit-post" data-id="${p.id}">
       <strong>${esc(p.topic)}</strong>
-      <span class="small muted">${esc(hhmm(p.post_time))} · ${esc(FORMATS[p.format])} · ${esc(pillarLabel(p.pillar))}${p.tool && p.tool !== 'uygulama' ? ' · ' + esc(TOOLS[p.tool]?.label || '') : ''}${p.media ? ' · <i class="ti ti-paperclip" aria-label="Dosya var"></i>' : ''}</span></button>
+      <span class="small muted">${esc(hhmm(p.post_time))} · ${esc(FORMATS[p.format])} · ${esc(pillarLabel(p.pillar))}${p.tool && p.tool !== 'uygulama' ? ' · ' + esc(TOOLS[p.tool]?.label || '') : ''}${p.media ? ' · <i class="ti ti-paperclip" aria-label="Dosya var"></i>' : ''}${p.auto_publish && !p.published_at ? ' · <span class="auto-tag"><i class="ti ti-clock-play" aria-hidden="true"></i> Otomatik yayın</span>' : ''}${p.ig_error ? ' · <span class="error">Yayın hatası</span>' : ''}</span></button>
     ${canMake ? `<button class="btn btn-gold sm" data-act="produce" data-id="${p.id}"><i class="ti ti-player-play" aria-hidden="true"></i> Oluştur</button>` : ''}
     <button class="chip st-${p.status}" data-act="cycle" data-id="${p.id}" title="Durumu ilerlet">${POST_STATUS[p.status]}</button>
   </div>`;
@@ -580,6 +591,11 @@ function onClick(e) {
     case 'reel-open': reelOpen(id); break;
     case 'reel-new': reelNew(); break;
     case 'reel-clear': reelClearClip(+b.dataset.i); break;
+    case 'reel-media': reelMedia(+b.dataset.i, b.dataset.kind); break;
+    case 'b-reply': { const ta = el.querySelector('#b-reply'); if (ta) ta.value = REPLY_PRESETS[+b.dataset.i].text; updateReplySample(); break; }
+    case 'g-media': gMedia(b.dataset.kind); break;
+    case 'igp-open': igpDialog(b.dataset.scope); break;
+    case 'igp-go': igpPublish(b, b.dataset.scope); break;
     case 'reel-mode': reelMode(b.dataset.mode); break;
     case 'reel-step': s.reel.step = b.dataset.step; draw(); el.querySelector('.reel-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); break;
     case 'reel-outro': reelOutro(b); break;
@@ -621,6 +637,7 @@ function onClick(e) {
   }
 }
 function onInput(e) {
+  if (e.target.id === 'b-reply' || e.target.id === 'b-wa') updateReplySample();
   if (e.target.id === 'c-cap') updateCheck();
   if (e.target.dataset.reel) onReelInput(e.target);
   if (e.target.dataset.gon === 'topic') s.gon.topic = e.target.value;
@@ -871,18 +888,19 @@ function reelScenarioHtml(r, sb, N, tpl) {
 }
 
 function reelVisualHtml(r, sb) {
-  return `<p class="small muted">Her sahnenin arka planını seç. Seçmezsen örnek renkli arka plan kullanılır.
+  return `<p class="small muted">Her sahnenin arka planını seç: stok video, AI görsel ya da kendi çekimin. Seçmezsen örnek renkli arka plan kullanılır.
       Dışarıda (Canva, Higgsfield, Kling…) hazır video ürettiysen bu adımı atla, "Video ve paylaşım"da aracı seçip bitmiş dosyayı yükle.</p>
     ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
       <legend>Sahne ${i + 1}: ${esc((sc.top || sc.bot).replace(/\n/g, ' ').slice(0, 40) || '—')}</legend>
       <div class="reel-clip">
-        <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-video-plus" aria-hidden="true"></i> Telefondan klip ya da foto</label>
+        <button type="button" class="btn btn-ghost" data-act="reel-media" data-i="${i}" data-kind="video"><i class="ti ti-movie" aria-hidden="true"></i> Stok video</button>
+        <button type="button" class="btn btn-ghost" data-act="reel-media" data-i="${i}" data-kind="ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI görsel</button>
+        <label class="btn btn-ghost" for="r-file-${i}"><i class="ti ti-device-mobile" aria-hidden="true"></i> Telefondan</label>
         <input type="file" id="r-file-${i}" data-clip="${i}" accept="video/*,image/*" class="sr-only">
         <span class="small muted reel-clip-name" id="r-name-${i}">${esc(r.names[i] || 'Klip yok · örnek arka plan')}</span>
         ${r.media[i] ? `<button type="button" class="icon-btn" data-act="reel-clear" data-i="${i}" aria-label="Sahne ${i + 1} klibini kaldır"><i class="ti ti-x" aria-hidden="true"></i></button>` : ''}
       </div>
     </fieldset>`).join('')}
-    <div class="check-box"><p><strong>Yakında (Faz 2):</strong> Her sahne için stok video arama (Pexels) ve AI görsel üretimi bu ekrana gelecek.</p></div>
     <div class="quick step-nav">${nextBtn('reel-step', 'video', 'Videoya geç')}</div>`;
 }
 
@@ -899,7 +917,8 @@ function reelVideoHtml(r, sb, sup) {
       ${r.extFile ? `<button type="button" class="btn btn-gold" data-act="reel-outro" ${s.brand?.logo_video_path && !r.busy ? '' : 'disabled'}><i class="ti ti-movie" aria-hidden="true"></i> ${r.out?.withOutro ? 'Logo eklendi · tekrar ekle' : 'Sona logo videosunu ekle'}</button>
         ${s.brand?.logo_video_path ? '' : '<p class="small muted">Logo videosu için önce Marka kitine yükle.</p>'}`
       : (r.ext ? '<p class="small muted">Dosya takvimde kayıtlı. Logo eklemek için videoyu bu cihazdan bir kez daha seç.</p>' : '')}`}
-    ${capBoxHtml('reels', { caption: r.caption, tags: r.tags })}`;
+    ${capBoxHtml('reels', { caption: r.caption, tags: r.tags })}
+    ${igPostHtml('reels')}`;
 }
 
 function viewReels() {
@@ -982,8 +1001,9 @@ function viewGonderi() {
         ${g.tool === 'uygulama' ? `<div class="quick">
             <label class="btn btn-primary" for="g-photo"><i class="ti ti-photo-plus" aria-hidden="true"></i> ${g.img ? 'Fotoğrafı değiştir' : 'Fotoğraf seç'}</label>
             <input type="file" id="g-photo" accept="image/*" class="sr-only">
-            ${g.imgName ? `<span class="small muted">${esc(g.imgName)}</span>` : ''}</div>
-            <div class="check-box"><p><strong>Yakında (Faz 2):</strong> AI ile görsel üretimi ve stok fotoğraf arama.</p></div>`
+            <button type="button" class="btn btn-ghost" data-act="g-media" data-kind="foto"><i class="ti ti-photo-search" aria-hidden="true"></i> Stok fotoğraf</button>
+            <button type="button" class="btn btn-ghost" data-act="g-media" data-kind="ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI görsel</button>
+            ${g.imgName ? `<span class="small muted">${esc(g.imgName)}</span>` : ''}</div>`
           : externalHtml('gonderi', { tool: g.tool, brief, media: g.media, accept: 'image/jpeg,image/png,image/webp' })}
         <fieldset class="reel-scene"><legend>Logo</legend>
           <label class="inline-check"><input type="checkbox" data-act="g-logo" ${g.logoOn ? 'checked' : ''}> Görselin üzerine logomu koy</label>
@@ -996,7 +1016,8 @@ function viewGonderi() {
         <div class="quick step-nav">
           <button type="button" class="btn btn-primary" data-act="g-save"><i class="ti ti-device-floppy" aria-hidden="true"></i> Kaydet (Hazır)</button>
           ${post ? `<button type="button" class="btn btn-ghost" data-act="g-done"><i class="ti ti-check" aria-hidden="true"></i> Paylaştım</button>` : ''}
-        </div>`}
+        </div>
+        ${igPostHtml('gonderi')}`}
       <p class="error" id="g-error" role="alert"></p>
     </section>
     <section class="card reel-side">
@@ -1049,6 +1070,27 @@ function gPick(file, external) {
   img.src = URL.createObjectURL(file);
 }
 
+// Görseli 1080×1350 JPEG olarak yükle ve takvim kaydını güncelle (gerekirse oluştur) → { data, blob, name }
+async function gPersist() {
+  const g = s.gon;
+  const cv = document.createElement('canvas'); cv.width = GW; cv.height = GH;
+  await gCompose(cv.getContext('2d'), GW, GH);
+  const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.92));
+  const name = reelFileName(g.topic || 'gonderi', 'jpg').replace(/^reels-/, 'gonderi-');
+  if (g.dirty || !g.media) g.media = await uploadMedia(blob, { name, folder: 'gonderi', ext: 'jpg' });
+  g.dirty = false;
+  const row = { tool: g.tool, media: g.media, status: 'hazir', hashtags: (g.tags || '').trim() || null,
+    ...(g.caption.trim() ? { caption: g.caption.trim().slice(0, 2200) } : {}) };
+  let data, error;
+  if (g.postId) ({ data, error } = await supabase.from('content_posts').update(row).eq('id', g.postId).select().single());
+  else ({ data, error } = await supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, topic: (g.topic || 'Gönderi').slice(0, 200), format: 'gonderi',
+    planned_for: todayISO(), platform: 'Instagram', pillar: g.pillar, post_time: hhmm(s.brand?.post_time) }).select().single());
+  if (error) throw new Error(trError(error));
+  s.posts = g.postId ? s.posts.map(x => (x.id === data.id ? data : x)) : [...s.posts, data];
+  g.postId = data.id;
+  return { data, blob, name };
+}
+
 async function gSave(btn) {
   const g = s.gon, err = el.querySelector('#g-error');
   if (!g.img) { if (err) err.textContent = 'Önce bir görsel seç ya da yükle.'; s.gon.step = 'gorsel'; draw(); return; }
@@ -1056,21 +1098,7 @@ async function gSave(btn) {
   if (risky.length && btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; if (err) err.textContent = 'Açıklamada yüksek riskli ifade var. Yine de kaydetmek için tekrar dokun.'; return; }
   btn.disabled = true;
   try {
-    const cv = document.createElement('canvas'); cv.width = GW; cv.height = GH;
-    await gCompose(cv.getContext('2d'), GW, GH);
-    const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.92));
-    const name = reelFileName(g.topic || 'gonderi', 'jpg').replace(/^reels-/, 'gonderi-');
-    if (g.dirty || !g.media) g.media = await uploadMedia(blob, { name, folder: 'gonderi', ext: 'jpg' });
-    g.dirty = false;
-    const row = { tool: g.tool, media: g.media, status: 'hazir', hashtags: (g.tags || '').trim() || null,
-      ...(g.caption.trim() ? { caption: g.caption.trim().slice(0, 2200) } : {}) };
-    let data, error;
-    if (g.postId) ({ data, error } = await supabase.from('content_posts').update(row).eq('id', g.postId).select().single());
-    else ({ data, error } = await supabase.from('content_posts').insert({ ...row, org_id: ctx.org.id, topic: (g.topic || 'Gönderi').slice(0, 200), format: 'gonderi',
-      planned_for: todayISO(), platform: 'Instagram', pillar: g.pillar, post_time: hhmm(s.brand?.post_time) }).select().single());
-    if (error) throw new Error(trError(error));
-    s.posts = g.postId ? s.posts.map(x => (x.id === data.id ? data : x)) : [...s.posts, data];
-    g.postId = data.id;
+    const { blob, name } = await gPersist();
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast('Gönderi "Hazır" olarak kaydedildi ve görsel indirildi.');
@@ -1153,6 +1181,8 @@ function onReelInput(t) {
 async function onChange(e) {
   const t = e.target;
   if (t.id === 'ig-ok' || t.id === 'ig-cap') { igUpdate(); return; }
+  if (t.id === 'igp-ok' || t.id === 'igp-cap') { igpUpdate(); return; }
+  if (t.dataset.igauto) { igpAuto(t.dataset.igauto, t); return; }
   if (t.id === 'k-photo') { kPhoto(t.files && t.files[0]); return; }
   if (t.id === 'b-logo') { brandFile('logo', t.files && t.files[0]); return; }
   if (t.id === 'b-video') { brandFile('video', t.files && t.files[0]); return; }
@@ -1164,7 +1194,10 @@ async function onChange(e) {
   if (t.dataset.reel === 'handle') { t.value = normalizeHandle(t.value); return; }
   if (t.dataset.reel === 'kw') { t.value = normalizeKeyword(t.value); return; }
   if (t.dataset.clip === undefined) return;
-  const i = +t.dataset.clip, file = t.files && t.files[0];
+  setClip(+t.dataset.clip, t.files && t.files[0]);
+}
+
+async function setClip(i, file, credit = '') {
   if (!file) return;
   const name = el.querySelector('#r-name-' + i);
   if (file.size > 300 * 1048576) { toast('Klip çok büyük (300 MB üstü). Daha kısa bir klip seçin.'); return; }
@@ -1172,7 +1205,7 @@ async function onChange(e) {
   try {
     const m = await loadClip(file);
     releaseClips([s.reel.media[i]]);
-    s.reel.media[i] = m; s.reel.names[i] = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+    s.reel.media[i] = m; s.reel.names[i] = credit || `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
     s.reel.prev = i;
     if (s.tab === 'reels') draw();
   } catch (err) { if (name) name.textContent = s.reel.names[i] || 'Klip yok · örnek arka plan'; toast(err.message); }
@@ -1701,6 +1734,7 @@ async function igStatus() {
     } else k.ig = { state: 'ready', username: data.username };
   } catch (e) { k.ig = { state: 'error', message: e.message }; }
   const box = el?.querySelector('#ig-box'); if (box) box.outerHTML = igButtonHtml();
+  if (el?.querySelector('#igp-box') && !el.querySelector('#p-dialog')?.open) draw();
   return k.ig;
 }
 
@@ -1795,4 +1829,200 @@ async function igPublish(btn) {
     btn.disabled = false; btn.innerHTML = '<i class="ti ti-send" aria-hidden="true"></i> Tekrar dene';
     if (uploaded.length) supabase.storage.from('ig-temp').remove(uploaded).catch(() => {});
   }
+}
+
+// ====================================================================
+// Faz 2: stok/AI medya + Reels ve Gönderi'yi Instagram'a yayınlama (şimdi ya da planlanan saatte)
+function reelMedia(i, kind) {
+  const r = s.reel, sc = r.sb.scenes[i] || { top: '', bot: '' };
+  const text = `${sc.top} ${sc.bot}`.replace(/\n/g, ' ').trim();
+  openPicker(el.querySelector('#p-dialog'), { scope: 'reels', kind, label: `Sahne ${i + 1}`,
+    query: queryFrom(sc.top || sc.bot || r.topic), prompt: [r.topic, text].filter(Boolean).join(' — ').slice(0, 400),
+    onPick: (file, credit) => setClip(i, file, credit) });
+}
+function gMedia(kind) {
+  const g = s.gon;
+  openPicker(el.querySelector('#p-dialog'), { scope: 'gonderi', kind, label: 'Gönderi', query: queryFrom(g.topic), prompt: g.topic,
+    onPick: file => gPick(file, false) });
+}
+
+const whenLabel = p => p ? `${new Date(p.planned_for + 'T12:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} ${hhmm(p.post_time)}` : '';
+const isPast = p => p && new Date(`${p.planned_for}T${hhmm(p.post_time)}:00`) <= new Date();
+const hasMedia = scope => (scope === 'reels' ? !!(s.reel.out || s.reel.ext) : !!s.gon.img);
+
+function igPostHtml(scope) {
+  const st = capState(scope), post = s.posts.find(p => p.id === st.postId);
+  if (post?.published_at && post.ig_permalink) return `<div class="check-box ok" id="igp-box"><i class="ti ti-brand-instagram" aria-hidden="true"></i>
+    <span>Instagram'da yayında. <a href="${esc(post.ig_permalink)}" target="_blank" rel="noopener">Gönderiyi aç</a></span></div>`;
+  if (post?.status === 'paylasildi') return '';
+  const ig = s.kar.ig;
+  if (!ig) { igStatus(); return '<div id="igp-box"></div>'; }
+  if (ig.state === 'checking' || ig.state === 'not_allowed') return '<div id="igp-box"></div>';
+  if (ig.state !== 'ready') return `<p class="small muted" id="igp-box">Instagram'a doğrudan yayın şu an kapalı: ${esc(ig.message || 'bağlantı kontrol edilemedi')}</p>`;
+  const has = hasMedia(scope);
+  return `<fieldset class="reel-scene ig-post" id="igp-box"><legend><i class="ti ti-brand-instagram" aria-hidden="true"></i> @${esc(ig.username)} hesabında yayınla</legend>
+    ${post?.ig_error ? `<div class="check-box warn"><p>${esc(post.ig_error)}</p></div>` : ''}
+    ${has ? '' : `<p class="small muted">${scope === 'reels' ? 'Önce videoyu üret ya da bitmiş dosyayı yükle.' : 'Önce bir görsel seç.'}</p>`}
+    <label class="inline-check"><input type="checkbox" data-igauto="${scope}" ${post?.auto_publish ? 'checked' : ''} ${has || post?.auto_publish ? '' : 'disabled'}>
+      Planlanan saatte otomatik yayınla${post ? ` <b>(${esc(whenLabel(post))})</b>` : ''}</label>
+    <p class="small muted">Açınca dosya ve açıklama kaydedilir; saat gelince uygulama kapalıyken de yayınlanır (5 dakikalık aralıklarla kontrol edilir).</p>
+    <div class="quick"><button type="button" class="btn btn-gold" data-act="igp-open" data-scope="${scope}" ${has ? '' : 'disabled'}><i class="ti ti-send" aria-hidden="true"></i> Şimdi yayınla</button></div>
+  </fieldset>`;
+}
+
+// Dosyayı (gerekirse) yükle, açıklamayı kaydet → güncel takvim kaydı
+async function ensurePost(scope) {
+  if (scope === 'gonderi') {
+    if (!s.gon.img) throw new Error('Önce bir görsel seç.');
+    return (await gPersist()).data;
+  }
+  const r = s.reel;
+  if (r.out && !r.out.external && !r.out.saved) {
+    if (r.out.ext !== 'mp4') throw new Error('Bu cihaz videoyu WebM olarak üretti; Instagram MP4 istiyor. Videoyu güncel Chrome\'da üret ya da telefona kaydedip elle paylaş.');
+    r.ext = await uploadMedia(r.out.blob, { name: r.out.name, folder: 'reels', ext: 'mp4' });
+    r.out.saved = true;
+  }
+  if (!r.ext) throw new Error('Önce videoyu üret ya da bitmiş dosyayı yükle.');
+  await reelSaveFields({ media: r.ext, status: 'hazir', tool: r.tool, storyboard: r.sb, hashtags: (r.tags || '').trim() || null,
+    ...(r.caption.trim() ? { caption: r.caption.trim().slice(0, 2200) } : {}) });
+  return s.posts.find(p => p.id === r.postId);
+}
+
+function igpFindings(scope, caption) {
+  return [...checkMessage(caption), ...(scope === 'reels' ? reelFindings(s.reel.sb) : [])].filter(x => x.level === 'yuksek');
+}
+
+function igpDialog(scope) {
+  const st = capState(scope);
+  const caption = fullCaption(st) || (scope === 'reels' ? suggestCaption(st.sb) : '');
+  const prev = scope === 'reels'
+    ? (st.out ? `<video src="${st.out.url}" class="igp-prev" muted playsinline controls></video>` : `<p class="small muted">Yüklenen dosya: ${esc(st.ext?.name || '')}</p>`)
+    : `<canvas id="igp-canvas" class="igp-prev" width="432" height="540" aria-label="Gönderi önizlemesi"></canvas>`;
+  const dlg = el.querySelector('#p-dialog');
+  dlg.innerHTML = `<form method="dialog" class="sheet-body ig-dlg" onsubmit="return false">
+    <h2 id="p-dialog-title"><i class="ti ti-brand-instagram" aria-hidden="true"></i> @${esc(s.kar.ig.username)} hesabında ${scope === 'reels' ? 'Reels' : 'gönderi'} yayınla</h2>
+    ${prev}
+    <div class="field"><label for="igp-cap">Açıklama ve etiketler</label><textarea id="igp-cap" rows="8" maxlength="2200">${esc(caption)}</textarea>
+      <p class="small muted"><span id="igp-len"></span> / 2200</p></div>
+    <div id="igp-check"></div>
+    <label class="check"><input type="checkbox" id="igp-ok"> <span>Bu içerik herkese açık yayınlanacak ve <strong>buradan geri alınamaz</strong>. Videoyu/görseli ve metni kontrol ettim.</span></label>
+    ${scope === 'reels' ? '<p class="small muted">Müzik eklenemez; yayından sonra Instagram\'da düzenleyebilir ya da müzikli paylaşım için telefondan paylaşabilirsin.</p>' : ''}
+    <p class="error" id="igp-error" role="alert"></p>
+    <div class="quick"><button type="button" class="btn btn-ghost" data-act="close">Vazgeç</button>
+      <button type="button" class="btn btn-gold" data-act="igp-go" data-scope="${scope}" id="igp-go" disabled><i class="ti ti-send" aria-hidden="true"></i> Yayınla</button></div>
+  </form>`;
+  dlg.dataset.scope = scope;
+  dlg.showModal();
+  if (scope === 'gonderi') { const cv = dlg.querySelector('#igp-canvas'); gCompose(cv.getContext('2d'), cv.width, cv.height); }
+  igpUpdate();
+}
+function igpUpdate() {
+  const dlg = el.querySelector('#p-dialog'), cap = dlg.querySelector('#igp-cap'); if (!cap) return;
+  dlg.querySelector('#igp-len').textContent = cap.value.length;
+  const f = igpFindings(dlg.dataset.scope, cap.value);
+  dlg.querySelector('#igp-check').innerHTML = f.length
+    ? `<div class="check-box warn">${f.map(x => `<p><strong>${esc(x.cat)}:</strong> "${x.hits.map(esc).join('", "')}" — ${esc(x.tip)}</p>`).join('')}<p><strong>Uyum uyarısı varken yayınlanamaz.</strong></p></div>`
+    : '<div class="check-box ok"><i class="ti ti-shield-check" aria-hidden="true"></i> Marka ve uyum kontrolü: sorun yok</div>';
+  dlg.querySelector('#igp-go').disabled = !!f.length || !dlg.querySelector('#igp-ok').checked;
+}
+
+async function igInvoke(body) {
+  const { data, error } = await supabase.functions.invoke('instagram', { body });
+  if (error) { let j = null; try { j = await error.context?.json?.(); } catch { /* yok */ } throw new Error(j?.message || error.message); }
+  return data;
+}
+
+async function igpPublish(btn, scope) {
+  const dlg = el.querySelector('#p-dialog'), err = dlg.querySelector('#igp-error');
+  const caption = dlg.querySelector('#igp-cap').value.trim();
+  if (igpFindings(scope, caption).length || !dlg.querySelector('#igp-ok').checked) return;
+  btn.disabled = true; err.textContent = '';
+  const step = t => { btn.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i> ${esc(t)}`; };
+  try {
+    step('Kaydediliyor…');
+    const post = await ensurePost(scope);
+    step('Instagram\'a gönderiliyor…');
+    let res = post.ig_creation_id
+      ? await igInvoke({ action: 'publish_finish', post_id: post.id, creation_id: post.ig_creation_id, caption }).catch(() => null)
+      : null;
+    if (!res) res = await igInvoke({ action: 'publish_media', post_id: post.id, caption });
+    for (let i = 1; res.pending && i <= 24; i++) {
+      step(`Instagram videoyu işliyor… ${i * 10} sn`);
+      await new Promise(ok => setTimeout(ok, 10000));
+      res = await igInvoke({ action: 'publish_finish', post_id: post.id, creation_id: res.creation_id, caption });
+    }
+    if (res.pending) throw new Error('Instagram videoyu hâlâ işliyor. Birkaç dakika sonra "Şimdi yayınla"ya tekrar dokun; kaldığı yerden devam eder.');
+    const now = new Date().toISOString();
+    s.posts = s.posts.map(p => (p.id === post.id ? { ...p, status: 'paylasildi', ig_permalink: res.permalink, ig_media_id: res.media_id, published_at: now, auto_publish: false, ig_error: null } : p));
+    dlg.innerHTML = `<div class="sheet-body"><h2><i class="ti ti-circle-check" aria-hidden="true"></i> Yayınlandı</h2>
+      <p>${scope === 'reels' ? 'Reels' : 'Gönderi'} @${esc(s.kar.ig.username)} hesabında yayında ve takvimde "Paylaşıldı" olarak işaretlendi.</p>
+      ${s.brand?.comment_auto ? `<p class="small muted">Yorumlarda "${esc(s.brand.kw || '')}" yazanlara WhatsApp linkiyle yanıt verilecek.</p>` : ''}
+      ${res.permalink ? `<p><a class="btn btn-gold" href="${esc(res.permalink)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Gönderiyi aç</a></p>` : ''}
+      <div class="quick"><button type="button" class="btn btn-ghost" data-act="close">Kapat</button></div></div>`;
+    toast('Instagram\'da yayınlandı.');
+    draw();
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-send" aria-hidden="true"></i> Tekrar dene';
+  }
+}
+
+async function igpAuto(scope, t) {
+  const on = t.checked, st = capState(scope);
+  t.disabled = true;
+  try {
+    let post = s.posts.find(p => p.id === st.postId);
+    if (on) {
+      if (!fullCaption(st).trim()) throw new Error('Önce açıklama yaz; otomatik yayında bu metin kullanılır.');
+      if (igpFindings(scope, fullCaption(st)).length) throw new Error('Metinde yüksek riskli ifade var; düzeltmeden otomatik yayın açılamaz.');
+      toast('Kaydediliyor…');
+      post = await ensurePost(scope);
+    }
+    if (!post) throw new Error('Önce takvime kaydet.');
+    const { data, error } = await supabase.from('content_posts').update({ auto_publish: on, ig_error: null }).eq('id', post.id).select().single();
+    if (error) throw new Error(trError(error));
+    s.posts = s.posts.map(x => (x.id === data.id ? data : x));
+    toast(!on ? 'Otomatik yayın kapatıldı.' : isPast(data) ? 'Planlanan saat geçti; 5 dakika içinde yayınlanacak.' : `Otomatik yayın açık: ${whenLabel(data)}.`);
+  } catch (e) { t.checked = !on; toast(e.message); }
+  t.disabled = false;
+  draw();
+}
+
+// --------------------------------------------------------------------
+// Yorum anahtar kelimesi → WhatsApp (marka kiti bölümü)
+const REPLY_PRESETS = [
+  { label: 'Samimi', text: 'Merhaba @{kullanici}, ilgin için teşekkürler! Detayları WhatsApp\'tan konuşalım: {link}' },
+  { label: 'Bilgilendirici', text: '@{kullanici} sorduğun için teşekkürler. Merak ettiklerini birebir anlatmak isterim, buradan yazabilirsin: {link}' },
+  { label: 'Kısa', text: '@{kullanici} WhatsApp\'tan yaz, anlatayım: {link}' }
+];
+function normalizeWa(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) d = '9' + d;
+  if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+  return /^[0-9]{10,15}$/.test(d) ? d : '';
+}
+const replySample = (tpl, wa) => (tpl || REPLY_PRESETS[0].text).replaceAll('{kullanici}', 'ayse.k').replace('{link}', 'wa.me/' + (normalizeWa(wa) || '90…'));
+function updateReplySample() {
+  const box = el.querySelector('#b-sample'); if (!box) return;
+  box.textContent = replySample(el.querySelector('#b-reply')?.value.trim(), el.querySelector('#b-wa')?.value);
+}
+function commentKitHtml(b) {
+  const sample = replySample(b.comment_reply, b.wa_phone);
+  const log = s.comments || [];
+  return `<fieldset class="reel-scene comment-kit"><legend><i class="ti ti-message-circle" aria-hidden="true"></i> Yorumdan WhatsApp'a</legend>
+    <p class="small muted">Yayınladığın Reels ve gönderilerde biri yorumuna <b>${esc(b.kw || 'anahtar kelimeni')}</b> yazınca yorumuna WhatsApp linkiyle yanıt verilir, kişi Kazanım'a aday olarak eklenir.</p>
+    <div class="form-2">
+      <div class="field"><label for="b-wa">WhatsApp numaran</label><input id="b-wa" name="wa_phone" type="tel" inputmode="numeric" maxlength="20" value="${esc(b.wa_phone || '')}" placeholder="905321234567"></div>
+      <div class="field"><span class="label">Durum</span><label class="inline-check"><input type="checkbox" name="comment_auto" ${b.comment_auto ? 'checked' : ''}> Otomatik yanıtı aç</label></div>
+    </div>
+    <div class="field"><label for="b-reply">Yanıt metni</label>
+      <textarea id="b-reply" name="comment_reply" rows="3" maxlength="220" placeholder="${esc(REPLY_PRESETS[0].text)}">${esc(b.comment_reply || '')}</textarea>
+      <div class="chips" role="group" aria-label="Hazır metinler">${REPLY_PRESETS.map((x, i) => `<button type="button" class="chip" data-act="b-reply" data-i="${i}">${esc(x.label)}</button>`).join('')}</div>
+      <p class="small muted">{kullanici} yorumu yazanın adı, {link} WhatsApp linkin olur.</p>
+      <p class="small">Örnek: “<span id="b-sample">${esc(sample)}</span>”</p></div>
+    <div class="check-box"><p>Her yoruma <b>bir kez</b> ve <b>herkese açık</b> yanıt verilir; 5 dakikada en fazla 15 yanıt gider. Instagram kuralları gereği kişiye DM atılmaz; konuşmayı o başlatır.</p></div>
+    ${log.length ? `<h3 class="small">Son yanıtlar</h3><ul class="entry-list">${log.map(c => `<li><span>@${esc(c.username || '')}: ${esc(String(c.text || '').slice(0, 60))}</span>
+      <span class="small ${c.replied ? 'muted' : 'error'}">${c.replied ? 'Yanıtlandı' : 'Yanıt gitmedi: ' + esc(String(c.error || '').slice(0, 80))} · ${esc(new Date(c.created_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span></li>`).join('')}</ul>` : ''}
+  </fieldset>`;
 }

@@ -2,6 +2,9 @@
 // COMPOSIO_API_KEY sunucuda gizli; tarayıcıya hiç gitmez. Yalnızca private.ig_links'te izni olan kullanıcı yayınlar.
 //   { action: 'status' }                                   → hazır mı, hangi hesap
 //   { action: 'publish', paths: [...], caption, post_id? } → karusel oluştur + yayınla, geçici görselleri sil
+//   { action: 'publish_media', post_id, caption }          → takvimdeki Reels/Gönderi'yi yayınla
+//                                                             (video işlenirken { pending, creation_id } döner)
+//   { action: 'publish_finish', post_id, creation_id }     → işlenen Reels'i yayınla
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const API = 'https://backend.composio.dev';
@@ -61,6 +64,46 @@ async function resolve(key: string, link: Record<string, string>, diag: Diag): P
   return null;
 }
 
+type Found = { acc: Acc; igUser: string; username: string };
+function captionOf(p: { caption?: string | null; hashtags?: string | null }) {
+  return [String(p.caption || '').trim(), String(p.hashtags || '').trim()].filter(Boolean).join('\n\n');
+}
+const pubUrlOf = (base: string, path: string) => `${base}/storage/v1/object/public/icerik/${path.split('/').map(encodeURIComponent).join('/')}`;
+const notReady = (m: string) => /9007|not\s*ready|IN_PROGRESS|still processing|henüz/i.test(m);
+
+// Reels/Gönderi yayını: görsel hemen, video işlenirken "pending" döner
+async function publishPost(key: string, f: Found, post: Record<string, any>, caption: string, creationId: string | null, base: string) {
+  const media = post.media || {};
+  if (!media.path) throw new Error('Önce videoyu ya da görseli kaydet (takvime yüklenmiş dosya yok).');
+  const isVideo = post.format === 'reels';
+  if (isVideo && !/\.mp4$/i.test(media.path) && media.type !== 'video/mp4') throw new Error('Instagram Reels için MP4 gerekir; bu dosya ' + (media.type || 'farklı biçimde') + '.');
+  if (!isVideo && !/\.(jpe?g)$/i.test(media.path)) throw new Error('Instagram gönderisi için JPEG gerekir.');
+  let cid = creationId;
+  if (!cid) {
+    const args: Record<string, unknown> = { ig_user_id: f.igUser, caption };
+    if (isVideo) Object.assign(args, { video_url: pubUrlOf(base, media.path), media_type: 'REELS', share_to_feed: true });
+    else args.image_url = pubUrlOf(base, media.path);
+    const c = await exec(key, f.acc, 'INSTAGRAM_POST_IG_USER_MEDIA', args);
+    cid = findKey(c, ['id', 'creation_id', 'container_id']);
+    if (!cid) throw new Error('Instagram taslağı oluşturulamadı.');
+  }
+  let pub;
+  try { pub = await exec(key, f.acc, 'INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH', { ig_user_id: f.igUser, creation_id: cid, max_wait_seconds: isVideo ? 45 : 30 }); }
+  catch (e) {
+    const m = String((e as Error).message || e);
+    if (isVideo && notReady(m)) return { pending: true, creation_id: cid };
+    throw e;
+  }
+  const mediaId = findKey(pub, ['id', 'ig_media_id', 'media_id']);
+  if (!mediaId && isVideo) return { pending: true, creation_id: cid };
+  let permalink: string | null = null;
+  if (mediaId) {
+    try { permalink = findKey(await exec(key, f.acc, 'INSTAGRAM_GET_IG_MEDIA', { ig_media_id: mediaId, fields: 'id,permalink' }), ['permalink']); }
+    catch { /* yayın yine başarılı */ }
+  }
+  return { pending: false, media_id: mediaId, permalink };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -117,9 +160,23 @@ Deno.serve(async (req: Request) => {
         catch { /* bağlantı alınamazsa yayın yine başarılı */ }
       }
       if (body.post_id) {
-        await userClient.from('content_posts').update({ status: 'paylasildi', ig_permalink: permalink, published_at: new Date().toISOString() }).eq('id', String(body.post_id));
+        await userClient.from('content_posts').update({ status: 'paylasildi', ig_permalink: permalink, ig_media_id: mediaId, published_at: new Date().toISOString() }).eq('id', String(body.post_id));
       }
       return json({ ok: true, media_id: mediaId, permalink });
+    }
+
+    if (body.action === 'publish_media' || body.action === 'publish_finish') {
+      const { data: post, error: pe } = await userClient.from('content_posts').select('*').eq('id', String(body.post_id || '')).maybeSingle();
+      if (pe || !post) return json({ error: 'not_found', message: 'Takvim kaydı bulunamadı.' }, 404);
+      if (post.published_at) return json({ ok: true, permalink: post.ig_permalink, already: true });
+      if (!['reels', 'gonderi'].includes(post.format)) return json({ error: 'format', message: 'Bu yol yalnızca Reels ve Gönderi içindir.' }, 400);
+      const caption = String(body.caption ?? captionOf(post)).slice(0, 2200);
+      if (BANNED.test(caption)) return json({ error: 'brand', message: 'Açıklama metninde yasak terim var (marka filtresi).' }, 400);
+      const res = await publishPost(key, found, post, caption, body.action === 'publish_finish' ? String(body.creation_id || '') : null, url);
+      const patch = res.pending ? { ig_creation_id: res.creation_id, ig_error: null }
+        : { status: 'paylasildi', ig_permalink: res.permalink, ig_media_id: res.media_id, ig_creation_id: null, ig_error: null, published_at: new Date().toISOString() };
+      await userClient.from('content_posts').update(patch).eq('id', post.id);
+      return json({ ok: !res.pending, ...res });
     }
     return json({ error: 'bad_request' }, 400);
   } catch (e) {

@@ -918,3 +918,23 @@ i.c-gold, i.c-navy, i.c-green, i.c-blue, i.c-purple, i.c-red, i.c-gray { color: 
   .fm-tnode.on { background: #3A3020; }
   .lib-icon.k-ses { background: #3A2E1A; } .lib-icon.k-belge { background: #1D2B45; color: #9DB8EC; } .lib-icon.k-drive { background: #16372A; color: #7FD1AA; }
 }
+
+/* ---------- Faz 2: medya seçici + Instagram yayını ---------- */
+.mp .seg { margin-bottom: 12px; }
+.mp-search { display: flex; gap: 8px; margin-bottom: 12px; }
+.mp-search input { flex: 1; min-width: 0; }
+.mp-grid { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 52vh; overflow-y: auto; }
+.mp-tile { position: relative; display: block; width: 100%; aspect-ratio: 9 / 16; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--navy-100); cursor: pointer; }
+.mp-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mp-tile[aria-selected="true"] { outline: 3px solid var(--gold-500); outline-offset: 2px; }
+.mp-tile:focus-visible { outline: 3px solid var(--gold-600); outline-offset: 2px; }
+.mp-dur { position: absolute; left: 6px; bottom: 6px; background: rgba(13, 27, 52, .78); color: #fff; font-size: .72rem; padding: 1px 6px; border-radius: 4px; }
+.mp-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0 2px; background: var(--surface); border-top: 1px solid var(--border); }
+.mp-ai { margin: 12px auto; max-width: 260px; }
+.mp-ai img { width: 100%; border-radius: 8px; display: block; }
+.igp-prev { display: block; width: 100%; max-width: 220px; margin: 0 auto 12px; border-radius: 8px; background: #000; }
+.ig-post legend i { color: var(--gold-600); }
+.auto-tag { color: var(--gold-600); font-weight: 600; }
+.comment-kit h3 { margin: 10px 0 4px; }
+.reel-clip .btn { flex: 1 1 0; min-width: 0; padding-inline: 8px; white-space: nowrap; }
+.reel-clip .reel-clip-name { flex-basis: 100%; }
