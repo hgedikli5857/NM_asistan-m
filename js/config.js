@@ -5,4 +5,4 @@ export const SUPABASE_URL = 'https://dpiuyhwjvagezsuhgqxp.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_df7D0hq4YaF3B-Ph9-KgRg_mBAsqpIx';
 
 export const APP_NAME = 'NM Departmanı';
-export const APP_VERSION = '3.14.0 — İçerik fabrikası (Faz 1)';
+export const APP_VERSION = '3.15.0 — Akademi kütüphanesi';

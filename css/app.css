@@ -823,3 +823,40 @@ table.quota th { font-size: .72rem; text-transform: uppercase; letter-spacing: .
   .stepper button[aria-selected="true"] { background: #3A3020; }
   .tool-pick .chip[aria-checked="true"] { background: #E6EAF5; color: #0E1A33; border-color: #E6EAF5; }
 }
+
+/* ===================== Akademi kütüphanesi ===================== */
+.path-card { margin-bottom: 16px; border-left: 4px solid var(--gold-600); border-radius: 0 16px 16px 0; }
+.path-next { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.lib-tools { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 8px; }
+.lib-tools .field { flex: 1 1 220px; margin: 0; }
+.lib-cats { margin-bottom: 14px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.lib-item { display: grid; grid-template-columns: 44px 1fr 24px; gap: 12px; align-items: start; text-align: left; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--border); margin: 0; }
+.lib-item:hover { border-color: var(--gold-600); }
+.lib-item.done { opacity: .8; }
+.lib-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 1.3rem; background: var(--gold-100); color: var(--gold-600); }
+.lib-icon.k-pdf { background: #FCEBEB; color: #A32D2D; }
+.lib-icon.k-video, .lib-icon.k-link { background: #E6EEFB; color: #2B5CB8; }
+.lib-icon.k-html { background: #F3E8FB; color: #7A3EA8; }
+.lib-main { display: grid; gap: 4px; min-width: 0; }
+.lib-main strong { overflow-wrap: anywhere; }
+.lib-meta { color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.lib-check { font-size: 1.3rem; color: var(--text-muted); }
+.lib-item.done .lib-check { color: var(--success); }
+.lib-view { margin: 12px 0; }
+.lib-video, .lib-img { width: 100%; border-radius: 12px; background: #000; }
+.pdf-page { width: 100%; height: auto; display: block; margin: 0 0 10px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.15); background: #fff; }
+.embed { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; }
+.embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.embed.html { aspect-ratio: auto; height: 70vh; background: #fff; }
+.lib-notes { border-top: 1px solid var(--border); padding-top: 10px; }
+.radio-chip { cursor: pointer; }
+.radio-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-chip:has(input:checked) { background: var(--navy-800); color: #fff; border-color: var(--navy-800); }
+.admin-list li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+@media (prefers-color-scheme: dark) {
+  .lib-icon.k-pdf { background: #3A1F1F; color: #F09595; }
+  .lib-icon.k-video, .lib-icon.k-link { background: #1D2B45; color: #9DB8EC; }
+  .lib-icon.k-html { background: #2C2038; color: #CDA5EA; }
+  .radio-chip:has(input:checked) { background: #E6EAF5; color: #0E1A33; border-color: #E6EAF5; }
+}
