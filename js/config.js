@@ -5,4 +5,4 @@ export const SUPABASE_URL = 'https://dpiuyhwjvagezsuhgqxp.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_df7D0hq4YaF3B-Ph9-KgRg_mBAsqpIx';
 
 export const APP_NAME = 'NM Departmanı';
-export const APP_VERSION = '3.17.0 — Faz 2: stok, AI görsel, Instagram yayını, yorum→WhatsApp';
+export const APP_VERSION = '3.17.1 — Stok kaynağı Pixabay';

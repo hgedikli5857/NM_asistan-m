@@ -1,8 +1,8 @@
-// NM Departmanı — Medya sunucusu: stok video/fotoğraf (Pexels) ve AI görsel (Gemini)
-// Anahtarlar sunucuda gizli: PEXELS_API_KEY, GEMINI_API_KEY. Yalnızca giriş yapmış kullanıcılar.
+// NM Departmanı — Medya sunucusu: stok video/fotoğraf (Pixabay ya da Pexels) ve AI görsel (Gemini)
+// Anahtarlar sunucuda gizli: PIXABAY_API_KEY (öncelikli) ya da PEXELS_API_KEY, GEMINI_API_KEY. Yalnızca giriş yapmış kullanıcılar.
 //   { action: 'status' }                                  → hangi servisler hazır
-//   { action: 'stok', q, kind: 'video'|'foto', page? }    → Pexels sonuçları (dikey)
-//   { action: 'indir', url }                              → Pexels dosyasını aktar (CORS için)
+//   { action: 'stok', q, kind: 'video'|'foto', page? }    → stok sonuçları (dikey öncelikli)
+//   { action: 'indir', url }                              → stok dosyasını aktar (CORS için)
 //   { action: 'gorsel', prompt, oran: '9:16'|'4:5'|'1:1' } → Gemini görseli (base64)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -27,6 +27,29 @@ function bestFile(files: PexFile[]): PexFile | null {
   return list.sort((a, b) => b.width - a.width)[0] || null;
 }
 
+type PixVid = { url: string; width: number; height: number; size: number; thumbnail: string };
+// Pixabay: dikey kırpma için 1920 genişliği geçmeyen, 40 MB altı en büyük boyut
+function pixFile(v: Record<string, PixVid>): PixVid | null {
+  const list = ['medium', 'small', 'tiny'].map(k => v[k]).filter(f => f && f.url && f.width && (!f.size || f.size < 40 * 1048576));
+  return list[0] || null;
+}
+async function pixabay(key: string, q: string, video: boolean, page: number) {
+  const qs = new URLSearchParams({ key, q, lang: 'tr', per_page: '18', page: String(page), safesearch: 'true' });
+  if (!video) { qs.set('orientation', 'vertical'); qs.set('image_type', 'photo'); }
+  const r = await fetch(`https://pixabay.com/api/${video ? 'videos/' : ''}?${qs}`);
+  if (!r.ok) throw new Error(r.status === 429 ? 'Çok fazla arama yapıldı; bir dakika sonra tekrar dene.' : `Pixabay HTTP ${r.status}`);
+  const data = await r.json();
+  const hits = data.hits || [];
+  const items = video
+    ? hits.map((h: { id: number; duration: number; pageURL: string; user: string; tags: string; videos: Record<string, PixVid> }) => {
+        const f = pixFile(h.videos || {});
+        return f && { id: h.id, thumb: f.thumbnail || h.videos?.tiny?.thumbnail, dur: h.duration, file: f.url, w: f.width, h: f.height, by: h.user, page: h.pageURL, alt: h.tags };
+      }).filter(Boolean)
+    : hits.map((h: { id: number; pageURL: string; user: string; tags: string; webformatURL: string; largeImageURL: string; imageWidth: number; imageHeight: number }) =>
+        ({ id: h.id, thumb: h.webformatURL, file: h.largeImageURL, w: h.imageWidth, h: h.imageHeight, by: h.user, page: h.pageURL, alt: h.tags }));
+  return { items, more: page * 18 < (data.totalHits || 0), source: 'Pixabay' };
+}
+
 const STYLE = 'Dikey sosyal medya görseli. Fotoğraf gerçekçiliğinde, doğal ışık, sıcak ve samimi atmosfer. ' +
   'Görselde hiçbir yazı, harf, logo, marka, filigran ya da ürün etiketi olmasın. Tanınmış kişi olmasın. ' +
   'Sağlıkla ilgili tedavi, önce/sonra ya da abartılı vaat çağrıştıran sahne olmasın. Konunun üst ve alt kısmında yazı için sade boşluk bırak.';
@@ -43,17 +66,22 @@ Deno.serve(async (req: Request) => {
     if (!user) return json({ error: 'unauthorized' }, 401);
 
     const pexKey = Deno.env.get('PEXELS_API_KEY');
+    const pixKey = Deno.env.get('PIXABAY_API_KEY');
     const gemKey = Deno.env.get('GEMINI_API_KEY');
     const body = await req.json().catch(() => ({}));
 
-    if (body.action === 'status') return json({ stok: !!pexKey, gorsel: !!gemKey });
+    if (body.action === 'status') return json({ stok: !!(pixKey || pexKey), kaynak: pixKey ? 'Pixabay' : pexKey ? 'Pexels' : null, gorsel: !!gemKey });
 
     if (body.action === 'stok') {
-      if (!pexKey) return json({ error: 'no_key', message: 'Sunucuda PEXELS_API_KEY tanımlı değil.' }, 503);
+      if (!pixKey && !pexKey) return json({ error: 'no_key', message: 'Sunucuda PIXABAY_API_KEY tanımlı değil.' }, 503);
       const q = String(body.q || '').trim().slice(0, 100);
       if (q.length < 2) return json({ error: 'bad_request', message: 'Arama kelimesi yaz.' }, 400);
       const page = Math.min(Math.max(Number(body.page) || 1, 1), 20);
       const video = body.kind !== 'foto';
+      if (pixKey) {
+        try { return json({ ...(await pixabay(pixKey, q, video, page)), page }); }
+        catch (e) { return json({ error: 'upstream', message: String((e as Error).message) }, 502); }
+      }
       const qs = new URLSearchParams({ query: q, orientation: 'portrait', per_page: '15', page: String(page), locale: 'tr-TR' });
       const r = await fetch(`https://api.pexels.com/${video ? 'videos/search' : 'v1/search'}?${qs}`, { headers: { Authorization: pexKey } });
       const data = await r.json().catch(() => ({}));
@@ -65,14 +93,14 @@ Deno.serve(async (req: Request) => {
           }).filter(Boolean)
         : (data.photos || []).map((p: { id: number; url: string; photographer: string; width: number; height: number; alt?: string; src: Record<string, string> }) =>
             ({ id: p.id, thumb: p.src.medium, file: p.src.large2x || p.src.original, w: p.width, h: p.height, by: p.photographer, page: p.url, alt: p.alt || '' }));
-      return json({ items, page, more: !!data.next_page });
+      return json({ items, page, more: !!data.next_page, source: 'Pexels' });
     }
 
     if (body.action === 'indir') {
       const u = String(body.url || '');
       let host = '';
       try { host = new URL(u).hostname; } catch { /* geçersiz */ }
-      if (!/^(videos|images)\.pexels\.com$/.test(host) && !/\.pexels\.com$/.test(host)) return json({ error: 'bad_url' }, 400);
+      if (!/(^|\.)pexels\.com$/.test(host) && !/(^|\.)pixabay\.com$/.test(host)) return json({ error: 'bad_url' }, 400);
       const r = await fetch(u);
       if (!r.ok || !r.body) return json({ error: 'upstream', message: `İndirilemedi (HTTP ${r.status})` }, 502);
       const len = Number(r.headers.get('content-length') || 0);

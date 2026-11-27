@@ -1,4 +1,4 @@
-// İçerik fabrikası Faz 2: stok video/fotoğraf (Pexels) ve AI görsel (Gemini) seçici.
+// İçerik fabrikası Faz 2: stok video/fotoğraf (Pixabay ya da Pexels) ve AI görsel (Gemini) seçici.
 // Sunucu fonksiyonu 'medya' anahtarları gizli tutar. Seçilen dosya File olarak geri verilir;
 // Reels sahnesine (loadClip) ya da Gönderi görseline (gPick) aynı yoldan girer.
 import { supabase } from '../supabase.js';
@@ -74,8 +74,8 @@ export async function openPicker(dlg, opts) {
   function body() {
     const k = kinds.find(x => x.id === p.kind);
     if (!k.ok) {
-      const name = p.kind === 'ai' ? 'GEMINI_API_KEY' : 'PEXELS_API_KEY';
-      const where = p.kind === 'ai' ? 'aistudio.google.com → Get API key' : 'pexels.com/api → Your API key (ücretsiz)';
+      const name = p.kind === 'ai' ? 'GEMINI_API_KEY' : 'PIXABAY_API_KEY';
+      const where = p.kind === 'ai' ? 'aistudio.google.com → Get API key' : 'pixabay.com\'a ücretsiz üye ol → pixabay.com/api/docs sayfasında "key" satırı';
       return `<div class="check-box warn"><p><b>${esc(k.label)} henüz açık değil.</b> Anahtarı al (${esc(where)}), sonra Supabase → Edge Functions → Secrets bölümüne <b>${name}</b> adıyla ekle.</p>
         <button type="button" class="btn btn-ghost sm" data-mp="recheck"><i class="ti ti-refresh" aria-hidden="true"></i> Ekledim, tekrar kontrol et</button></div>`;
     }
@@ -99,7 +99,7 @@ export async function openPicker(dlg, opts) {
             ${p.kind === 'video' ? `<span class="mp-dur">${it.dur} sn</span>` : ''}
           </button></li>`).join('')}</ul>
         ${p.more ? `<div class="quick"><button type="button" class="btn btn-ghost" data-mp="more" ${p.busy ? 'disabled' : ''}>Daha fazla göster</button></div>` : ''}
-        <p class="small muted">Görseller <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>'ten; ticari kullanım ücretsiz.</p>`
+        <p class="small muted">Görseller ${p.source === 'Pexels' ? '<a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>' : '<a href="https://pixabay.com" target="_blank" rel="noopener">Pixabay</a>'}'tan; ticari kullanım ücretsiz. Yatay videolar dikey olarak ortadan kırpılır.</p>`
       : p.busy ? '<p class="muted">Aranıyor…</p>' : p.searched ? '<p class="muted">Sonuç yok. Daha genel bir kelime dene (ör. "kahve" yerine "sabah").</p>' : ''}`;
   }
   function foot() {
@@ -125,7 +125,7 @@ export async function openPicker(dlg, opts) {
     p.q = q; p.busy = true; p.err = ''; if (page === 1) { p.items = []; p.sel = null; } draw();
     try {
       const d = await call({ action: 'stok', q, kind: p.kind, page });
-      p.items = page === 1 ? d.items : [...p.items, ...d.items]; p.page = page; p.more = d.more; p.searched = true;
+      p.items = page === 1 ? d.items : [...p.items, ...d.items]; p.page = page; p.more = d.more; p.searched = true; p.source = d.source || 'Pixabay';
     } catch (e) { p.err = e.message; }
     p.busy = false; draw();
   }
@@ -133,8 +133,9 @@ export async function openPicker(dlg, opts) {
     const it = p.items[p.sel]; if (!it) return;
     p.busy = true; p.err = ''; draw();
     try {
-      const file = await fileFromUrl(it.file, `pexels-${it.id}.${p.kind === 'video' ? 'mp4' : 'jpg'}`);
-      dlg.close(); opts.onPick(file, it.by ? `Pexels · ${it.by}` : 'Pexels');
+      const src = p.source || 'Pixabay';
+      const file = await fileFromUrl(it.file, `${src.toLowerCase()}-${it.id}.${p.kind === 'video' ? 'mp4' : 'jpg'}`);
+      dlg.close(); opts.onPick(file, it.by ? `${src} · ${it.by}` : src);
     } catch (e) { p.busy = false; p.err = e.message; draw(); }
   }
   async function gen() {
