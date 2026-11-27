@@ -50,11 +50,12 @@ Deno.serve(async (req: Request) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens, ...(system ? { system } : {}), messages })
+      body: JSON.stringify({ model: MODEL, max_tokens, thinking: { type: 'disabled' }, ...(system ? { system } : {}), messages })
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return json({ error: 'upstream', message: data?.error?.message || `HTTP ${r.status}` }, 502);
     const text = (data.content || []).filter((c: { type: string }) => c.type === 'text').map((c: { text: string }) => c.text).join('').trim();
+    if (!text) return json({ error: 'empty', message: `Boş yanıt (stop: ${data.stop_reason || '?'}; bloklar: ${(data.content || []).map((c: { type: string }) => c.type).join(',') || 'yok'})` }, 502);
     return json({ text, remaining, limit: DAILY_LIMIT });
   } catch (e) {
     return json({ error: 'server', message: String(e) }, 500);
