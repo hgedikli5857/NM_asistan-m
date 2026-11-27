@@ -231,6 +231,9 @@ function produce(id) {
     else {
       reelNew(true);
       Object.assign(s.reel, { postId: p.id, topic: p.topic, step: 'senaryo' });
+      // Planlı konu için şablon metni ("Mesaim bitiyor") gösterme: boş sahnelerle başla
+      if (!s.ai) { s.reel.mode = 'metin'; s.reel.sb = blankStoryboard(loadBrand()); }
+      else s.reel.sb = normalizeStoryboard({ ...s.reel.sb, scenes: s.reel.sb.scenes.map(x => ({ ...x, top: '', bot: '' })) });
       reelLoadPost(p);
       s.tab = 'reels'; history.replaceState(null, '', '#/pazarlama?tab=reels'); draw();
     }
@@ -808,7 +811,8 @@ function sourceHtml(r) {
     return `<div class="field"><label for="r-topic">Konu</label>
         <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. İşimin yanında akşamlarım"></div>
       ${s.ai ? `<button type="button" class="btn btn-ghost" data-act="reel-ai"><i class="ti ti-sparkles" aria-hidden="true"></i> AI ile senaryo yaz</button>`
-        : '<p class="small muted">AI asistan bu hesapta kapalı; senaryoyu aşağıdaki kutulara kendin yazabilir ya da "Benim metnim" modunu kullanabilirsin.</p>'}`;
+        : `<div class="check-box warn"><p><b>AI asistan şu an kapalı.</b> Açmak için <a href="#/ayarlar">Ayarlar → AI asistan</a> bölümüne kendi anahtarını gir. O zamana kadar senaryoyu kutulara yazabilir ya da <b>Benim metnim</b> moduna geçebilirsin.</p>
+          <button type="button" class="btn btn-primary" data-act="reel-mode" data-mode="metin"><i class="ti ti-file-text" aria-hidden="true"></i> Benim metnime geç</button></div>`}`;
   }
   return `<div class="field"><label for="r-topic">Başlık (takvimde görünür)</label>
       <input id="r-topic" data-reel="topic" maxlength="200" value="${esc(r.topic)}" placeholder="Ör. Sabah rutinim"></div>
@@ -1283,6 +1287,8 @@ function reelMode(mode) {
   const brand = { kw: keep.kw, handle: keep.handle };
   r.sb = r.other && r.other.mode === mode ? r.other : (mode === 'metin' ? blankStoryboard(brand) : defaultStoryboard(brand));
   r.sb = normalizeStoryboard({ ...r.sb, kw: keep.kw, handle: keep.handle });
+  // Planlı bir konu varken AI moduna geçince şablon metni yerine boş sahneler
+  if (mode === 'ai' && r.postId && !(r.other && r.other.mode === 'ai')) r.sb = normalizeStoryboard({ ...r.sb, scenes: r.sb.scenes.map(x => ({ ...x, top: '', bot: '' })) });
   r.other = keep; r.mode = mode; r.prev = 0; r.note = '';
   draw();
 }
