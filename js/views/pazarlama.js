@@ -45,6 +45,7 @@ export async function renderPazarlama(target, context) {
     <dialog id="p-dialog" class="sheet" aria-labelledby="p-dialog-title"></dialog>`;
   el.addEventListener('click', onClick);
   el.addEventListener('input', onInput);
+  el.addEventListener('toggle', e => { if (e.target.open) e.target.querySelectorAll?.('textarea').forEach(autoGrow); }, true);
   el.addEventListener('submit', onSubmit);
   el.addEventListener('change', onChange);
   initReel();
@@ -79,6 +80,16 @@ function draw() {
   if (s.tab === 'reels') afterReelDraw();
   if (s.tab === 'gonderi') gPaint();
   if (s.tab === 'karusel') kAfterDraw();
+  el.querySelectorAll('#p-body textarea').forEach(autoGrow);
+}
+
+// Metin kutusu içeriği kadar uzasın: AI'ın yazdığı satırlar gizli kalmasın
+function autoGrow(ta) {
+  if (!ta.offsetParent) return; // kapalı bölümdeki kutu: ölçülemez, varsayılan boyutta kalsın
+  ta.style.height = 'auto';
+  const h = ta.scrollHeight + 2, max = 480;
+  ta.style.height = `${Math.min(h, max)}px`;
+  ta.style.overflowY = h > max ? 'auto' : 'hidden';
 }
 
 // ====================================================================
@@ -639,6 +650,7 @@ function onClick(e) {
 function onInput(e) {
   if (e.target.id === 'b-reply' || e.target.id === 'b-wa') updateReplySample();
   if (e.target.id === 'c-cap') updateCheck();
+  if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
   if (e.target.dataset.reel) onReelInput(e.target);
   if (e.target.dataset.gon === 'topic') s.gon.topic = e.target.value;
   if (e.target.dataset.cap) { capState(e.target.dataset.cap).caption = e.target.value; capCheck(e.target.dataset.cap); }
