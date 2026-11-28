@@ -554,3 +554,46 @@ export async function appendOutro({ file, outro, canvas, onProgress = () => {} }
   const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
   return { blob: new Blob(chunks, { type: type.split(';')[0] }), ext, type, width: W, height: H };
 }
+
+// ---- Senaryonun tamamını tek metin olarak düzenleme ----
+// Biçim: her sahne "Sahne N · X sn" satırıyla başlar; başlık satırları, tek "-" satırı, alt yazı satırları.
+// Sonda "Slogan:" (satırlar " / " ile) ve "Çağrı:" satırları.
+export function storyboardToText(sb) {
+  const scenes = sb.scenes.map((sc, i) => [`Sahne ${i + 1} · ${String(secOf(sc.sec)).replace('.', ',')} sn`, sc.top, '-', sc.bot]
+    .filter((x, j) => j !== 1 || x).join('\n').trim());
+  const tail = [`Slogan: ${String(sb.slogan || '').replace(/\n/g, ' / ')}`, `Çağrı: ${sb.cta || ''}`];
+  return [...scenes, tail.join('\n')].join('\n\n');
+}
+export function textToStoryboard(text, sb) {
+  const warnings = [];
+  let slogan = sb.slogan, cta = sb.cta;
+  const lines = String(text || '').replace(/\r/g, '').split('\n').filter(line => {
+    const m = line.match(/^\s*(slogan|çağrı|cta)\s*[:：]\s*(.*)$/i);
+    if (!m) return true;
+    if (/^slogan$/i.test(m[1])) slogan = m[2].split(/\s*\/\s*/).join('\n').trim(); else cta = m[2].trim();
+    return false;
+  });
+  const blocks = [];
+  let cur = null;
+  for (const line of lines) {
+    const h = line.match(/^\s*\[?\s*sahne\s*\d+\s*(?:[·.:\-–]\s*(\d+(?:[.,]\d)?)\s*(?:sn|saniye)?)?\s*\]?\s*:?\s*$/i);
+    if (h) { cur = { sec: h[1] ? Number(h[1].replace(',', '.')) : null, lines: [] }; blocks.push(cur); continue; }
+    if (!cur) { if (!line.trim()) continue; cur = { sec: null, lines: [] }; blocks.push(cur); }
+    cur.lines.push(line);
+  }
+  const scenes = blocks.map((b, i) => {
+    const ls = b.lines.map(x => x.trim());
+    while (ls.length && !ls[ls.length - 1]) ls.pop();
+    while (ls.length && !ls[0]) ls.shift();
+    const sep = ls.findIndex(x => /^[-–—]{1,3}$/.test(x));
+    let top, bot;
+    if (sep >= 0) { top = ls.slice(0, sep).filter(Boolean).join('\n'); bot = ls.slice(sep + 1).filter(Boolean).join('\n'); }
+    else { const f = ls.filter(Boolean); top = f[0] || ''; bot = f.slice(1).join('\n'); }
+    if (top.split('\n').length > 2 || top.length > 60) warnings.push(`Sahne ${i + 1}: başlık en fazla 2 satır / 60 karakter olabilir; fazlası kesilir.`);
+    if (bot.split('\n').length > 4 || bot.length > 140) warnings.push(`Sahne ${i + 1}: alt yazı en fazla 4 satır / 140 karakter olabilir; fazlası kesilir.`);
+    return { top, bot, sec: b.sec ?? sb.scenes[i]?.sec ?? readSec(`${top} ${bot}`) };
+  }).filter(sc => sc.top || sc.bot);
+  if (scenes.length > MAX_SCENES) warnings.push(`${scenes.length} sahne var; ilk ${MAX_SCENES} sahne kullanıldı.`);
+  if (scenes.length < MIN_SCENES) throw new Error(`En az ${MIN_SCENES} sahne gerekli. Sahneleri "Sahne 1", "Sahne 2" satırlarıyla ayır.`);
+  return { sb: normalizeStoryboard({ ...sb, v: REEL_SCHEMA, scenes: scenes.slice(0, MAX_SCENES), slogan, cta }), warnings };
+}

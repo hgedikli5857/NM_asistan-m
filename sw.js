@@ -1,5 +1,5 @@
 // Basit çevrimdışı önbellek: uygulama dosyaları önbellekten, veri her zaman internetten.
-const CACHE = 'nm-departmani-v3.17.3';
+const CACHE = 'nm-departmani-v3.18.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './icons/icon.svg',
   './css/tokens.css', './css/app.css',

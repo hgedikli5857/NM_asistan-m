@@ -939,3 +939,4 @@ i.c-gold, i.c-navy, i.c-green, i.c-blue, i.c-purple, i.c-red, i.c-gray { color: 
 .reel-clip .btn { flex: 1 1 0; min-width: 0; padding-inline: 8px; white-space: nowrap; }
 .reel-clip .reel-clip-name { flex: 1 1 calc(100% - 60px); }
 #p-body textarea { resize: none; }
+.full-edit textarea { width: 100%; font-size: 1rem; line-height: 1.55; min-height: 16rem; }

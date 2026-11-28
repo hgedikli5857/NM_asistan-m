@@ -7,7 +7,7 @@ import { aiChat, aiAvailable, ETHICS, extractJSON } from '../ai/client.js';
 import { TEMPLATES, defaultStoryboard, normalizeStoryboard, normalizeHandle, normalizeKeyword,
   reelFindings, aiStoryboardPrompt, parseAiStoryboard, suggestCaption, reelSupport, drawReelFrame, previewTime,
   loadClip, releaseClips, loadReelFonts, renderReel, reelFileName, blankStoryboard, parseScript, aiScriptPrompt, parseAiScript,
-  fidelity, reelTotal, REEL_SCHEMA, MIN_SCENES, MAX_SCENES, SEC_MIN, SEC_MAX, SCENE_LEN, loadOutro, appendOutro, storyboardText } from '../pazarlama/reels.js';
+  fidelity, reelTotal, REEL_SCHEMA, MIN_SCENES, MAX_SCENES, SEC_MIN, SEC_MAX, SCENE_LEN, loadOutro, appendOutro, storyboardText, storyboardToText, textToStoryboard } from '../pazarlama/reels.js';
 import { planDays, weeklyQuota, buildHashtags, toolBrief, aiTopicsPrompt, TOOLS, DEFAULT_TIME, PLAN_FORMATS } from '../pazarlama/plan.js';
 import { W, H, LAYOUTS, EMBLEMS, MIN_SLIDES, MAX_SLIDES, normalizeDeck, normalizeSlide, normalizeBrand, sampleDeck, deckFindings,
   parseDeckText, aiDeckPrompt, aiStructurePrompt, parseAiDeck, suggestCaptionK, drawSlide, renderDeck, loadDeckFonts,
@@ -87,7 +87,7 @@ function draw() {
 function autoGrow(ta) {
   if (!ta.offsetParent) return; // kapalı bölümdeki kutu: ölçülemez, varsayılan boyutta kalsın
   ta.style.height = 'auto';
-  const h = ta.scrollHeight + 2, max = 480;
+  const h = ta.scrollHeight + 2, max = ta.id === 'r-full' ? Infinity : 480;
   ta.style.height = `${Math.min(h, max)}px`;
   ta.style.overflowY = h > max ? 'auto' : 'hidden';
 }
@@ -252,7 +252,7 @@ function produce(id) {
     if (p.storyboard) reelOpen(id);
     else {
       reelNew(true);
-      Object.assign(s.reel, { postId: p.id, topic: p.topic, step: 'senaryo' });
+      Object.assign(s.reel, { postId: p.id, topic: p.topic, step: 'senaryo', full: false, fullText: '' });
       // Planlı konu için şablon metni ("Mesaim bitiyor") gösterme: boş sahnelerle başla
       if (!s.ai) { s.reel.mode = 'metin'; s.reel.sb = blankStoryboard(loadBrand()); }
       else s.reel.sb = normalizeStoryboard({ ...s.reel.sb, scenes: s.reel.sb.scenes.map(x => ({ ...x, top: '', bot: '' })) });
@@ -607,8 +607,10 @@ function onClick(e) {
     case 'g-media': gMedia(b.dataset.kind); break;
     case 'igp-open': igpDialog(b.dataset.scope); break;
     case 'igp-go': igpPublish(b, b.dataset.scope); break;
-    case 'reel-mode': reelMode(b.dataset.mode); break;
-    case 'reel-step': s.reel.step = b.dataset.step; draw(); el.querySelector('.reel-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); break;
+    case 'reel-mode': if (s.reel.full) { s.reel.full = false; s.reel.fullText = ''; } reelMode(b.dataset.mode); break;
+    case 'reel-step':
+      if (s.reel.full) { reelFullApply(); if (s.reel.full) break; }
+      s.reel.step = b.dataset.step; draw(); el.querySelector('.reel-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); break;
     case 'reel-outro': reelOutro(b); break;
     case 'plan-make': planMake(b); break;
     case 'plan-ai': planAi(b); break;
@@ -626,6 +628,9 @@ function onClick(e) {
     case 'reel-parse': reelParse(); break;
     case 'reel-ai-src': reelAiSrc(b); break;
     case 'reel-add': reelSceneOp('add'); break;
+    case 'reel-full': reelFullOpen(); break;
+    case 'reel-full-apply': reelFullApply(); break;
+    case 'reel-full-cancel': s.reel.full = false; s.reel.fullText = ''; draw(); break;
     case 'reel-del': reelSceneOp('del', +b.dataset.i); break;
     case 'kar-prev': s.kar.prev = +b.dataset.i; kMarkPrev(); kPaint(); break;
     case 'kar-ai': kAi(b); break;
@@ -876,6 +881,7 @@ function reelScenarioHtml(r, sb, N, tpl) {
     </div>
     <p class="small muted">${r.mode === 'ai' ? `Şablon: <strong>${esc(tpl.label)}</strong>. ${esc(tpl.hint)}` : 'Kendi senaryonu yapıştır; uygulama sahnelere böler, kelimelerine dokunmaz.'} Kutularda 1. satır beyaz, sonrakiler altın yazılır.</p>
     ${sourceHtml(r)}
+    ${r.full ? fullEditHtml(r) : `<div class="quick"><button type="button" class="btn btn-ghost" data-act="reel-full"><i class="ti ti-edit" aria-hidden="true"></i> Metnin tamamını düzenle</button></div>
     ${sb.scenes.map((sc, i) => `<fieldset class="reel-scene">
       <legend>Sahne ${i + 1}</legend>
       <div class="reel-scene-tools">
@@ -886,17 +892,45 @@ function reelScenarioHtml(r, sb, N, tpl) {
       <div class="field"><label for="r-top-${i}">Başlık</label><textarea id="r-top-${i}" data-reel="top" data-i="${i}" rows="2" maxlength="60">${esc(sc.top)}</textarea></div>
       <div class="field"><label for="r-bot-${i}">Alt yazı</label><textarea id="r-bot-${i}" data-reel="bot" data-i="${i}" rows="${sc.bot.length > 70 ? 3 : 2}" maxlength="140">${esc(sc.bot)}</textarea></div>
     </fieldset>`).join('')}
-    ${N < MAX_SCENES ? `<button type="button" class="btn btn-ghost" data-act="reel-add"><i class="ti ti-plus" aria-hidden="true"></i> Sahne ekle</button>` : ''}
+    ${N < MAX_SCENES ? `<button type="button" class="btn btn-ghost" data-act="reel-add"><i class="ti ti-plus" aria-hidden="true"></i> Sahne ekle</button>` : ''}`}
     <fieldset class="reel-scene"><legend>Kapanış</legend>
-      <div class="field"><label for="r-slogan">Slogan${r.mode === 'metin' ? ' (boş bırakılırsa gösterilmez)' : ''}</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
-      <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>
+      ${r.full ? '' : `<div class="field"><label for="r-slogan">Slogan${r.mode === 'metin' ? ' (boş bırakılırsa gösterilmez)' : ''}</label><textarea id="r-slogan" data-reel="slogan" rows="2" maxlength="60">${esc(sb.slogan)}</textarea></div>
+      <div class="field"><label for="r-cta">Çağrı cümlesi</label><textarea id="r-cta" data-reel="cta" rows="2" maxlength="90">${esc(sb.cta)}</textarea></div>`}
       <div class="form-2">
         <div class="field"><label for="r-handle">Hesap adı</label><input id="r-handle" data-reel="handle" maxlength="31" value="${esc(sb.handle)}" placeholder="@kullaniciadi" autocapitalize="off"></div>
         <div class="field"><label for="r-kw">Yorum anahtar kelimesi</label><input id="r-kw" data-reel="kw" maxlength="16" value="${esc(sb.kw)}"></div>
       </div>
     </fieldset>
     <div id="r-check"></div>
-    <div class="quick step-nav">${nextBtn('reel-step', 'gorsel', 'Görsellere geç')}</div>`;
+    ${r.full ? '' : `<div class="quick step-nav">${nextBtn('reel-step', 'gorsel', 'Görsellere geç')}</div>`}`;
+}
+
+// Senaryonun tamamını tek kutuda düzenleme
+function fullEditHtml(r) {
+  return `<fieldset class="reel-scene full-edit"><legend><i class="ti ti-edit" aria-hidden="true"></i> Metnin tamamı</legend>
+    <p class="small muted">Her sahne <b>Sahne 1 · 4 sn</b> satırıyla başlar. <b>-</b> satırının üstü büyük başlık (en fazla 2 satır), altı alt yazı (en fazla 4 satır). Yeni sahne için yeni bir "Sahne" satırı yaz; silmek için o bloğu sil. Sona <b>Slogan:</b> ve <b>Çağrı:</b> satırları.</p>
+    <div class="field"><label class="sr-only" for="r-full">Senaryo metninin tamamı</label>
+    <textarea id="r-full" rows="18" spellcheck="true" autocapitalize="sentences">${esc(r.fullText)}</textarea></div>
+    <p class="error" id="r-full-err" role="alert"></p>
+    <div class="quick">
+      <button type="button" class="btn btn-primary" data-act="reel-full-apply"><i class="ti ti-check" aria-hidden="true"></i> Uygula</button>
+      <button type="button" class="btn btn-ghost" data-act="reel-full-cancel">Vazgeç</button>
+    </div>
+  </fieldset>`;
+}
+function reelFullOpen() {
+  const r = s.reel;
+  r.fullText = storyboardToText(r.sb); r.full = true; draw();
+  const ta = el.querySelector('#r-full'); ta?.focus(); ta?.setSelectionRange(0, 0);
+}
+function reelFullApply() {
+  const r = s.reel, ta = el.querySelector('#r-full'), err = el.querySelector('#r-full-err');
+  try {
+    const { sb, warnings } = textToStoryboard(ta.value, r.sb);
+    r.sb = sb; r.full = false; r.fullText = ''; r.prev = 0;
+    draw();
+    toast(warnings.length ? warnings[0] : `Senaryo güncellendi: ${sb.scenes.length} sahne.`);
+  } catch (e) { r.fullText = ta.value; err.textContent = e.message; }
 }
 
 function reelVisualHtml(r, sb) {
